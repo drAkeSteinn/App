@@ -1,0 +1,1039 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* ============================================================
+   ARENA TORNEOS — Design System (Esports Broadcast)
+   Fonts: RBNo3.1 Extrabold Italic (display) · Gotham/Montserrat (UI)
+   ============================================================ */
+
+@font-face {
+  font-family: "RBNo31";
+  src: url("/fonts/RBNo3.1-ExtraboldItalic.otf") format("opentype");
+  font-weight: 800;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Gotham";
+  src: url("/fonts/montserrat-latin-500-normal.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Gotham";
+  src: url("/fonts/montserrat-latin-600-normal.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Gotham";
+  src: url("/fonts/montserrat-latin-700-normal.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Gotham";
+  src: url("/fonts/montserrat-latin-800-normal.woff2") format("woff2");
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --bg: #070708;
+  --bg-2: #0d0d10;
+  --panel: #101014;
+  --panel-2: #16161c;
+  --panel-3: #1d1d25;
+
+  --red: #e8102e;
+  --red-hot: #ff2440;
+  --red-deep: #6e0a1a;
+  --red-blood: #a30d24;
+  --gold: #ffb830;
+  --bronze: #cd7f45;
+  --silver-hi: #f7f7f9;
+  --silver: #d9dbe1;
+  --silver-dark: #a9adb8;
+  --ink: #141519;
+
+  --text: #f5f5f7;
+  --muted: #8e919c;
+  --line: rgba(255, 255, 255, 0.09);
+  --line-2: rgba(255, 255, 255, 0.16);
+
+  --connector: rgba(255, 255, 255, 0.22);
+  --font-display: "RBNo31", "Arial Black", sans-serif;
+  --font-goth: "Gotham", "Montserrat", "Segoe UI", sans-serif;
+
+  /* bracket geometry */
+  --cw: 232px;
+  --bgap: 44px;
+  --stub: 20px;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-goth);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--red);
+  color: #fff;
+}
+
+/* scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--red-deep) transparent;
+}
+*::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+*::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.03);
+}
+*::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--red), var(--red-deep));
+  border-radius: 0;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--red-hot);
+}
+
+:focus-visible {
+  outline: 2px solid var(--red-hot);
+  outline-offset: 2px;
+}
+
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) grayscale(1) brightness(1.6);
+  cursor: pointer;
+}
+
+/* ---------------- Typography helpers ---------------- */
+.font-display {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+.font-goth {
+  font-family: var(--font-goth);
+}
+.text-silver-grad {
+  background: linear-gradient(180deg, #ffffff 0%, #d4d6dc 45%, #8f939e 78%, #c7cad2 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.text-red-grad {
+  background: linear-gradient(180deg, #ff5a6e 0%, var(--red-hot) 40%, #9c0a20 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.stroke-text {
+  -webkit-text-stroke: 1.5px rgba(255, 255, 255, 0.28);
+  color: transparent;
+}
+
+/* ---------------- Clips & shapes ---------------- */
+.clip-card {
+  clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+}
+.clip-card-sm {
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+.clip-btn {
+  clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
+}
+.clip-tag {
+  clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+}
+.clip-badge {
+  clip-path: polygon(0 0, 100% 0, calc(100% - 9px) 100%, 0 100%);
+}
+.clip-notch {
+  clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px));
+}
+.skew-tag {
+  transform: skewX(-12deg);
+}
+.skew-tag > * {
+  transform: skewX(12deg);
+}
+
+/* ---------------- Surfaces ---------------- */
+.panel {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012) 55%), var(--panel);
+  border: 1px solid var(--line);
+  position: relative;
+}
+.panel-2 {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+}
+.plate {
+  background: linear-gradient(180deg, #fdfdfe 0%, #e6e8ee 40%, #b9bdc7 82%, #d6d9e0 100%);
+  color: var(--ink);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), inset 0 -2px 6px rgba(20, 21, 25, 0.25), 0 3px 10px rgba(0, 0, 0, 0.45);
+}
+.plate-gold {
+  background: linear-gradient(180deg, #ffe9b0 0%, #ffc94d 38%, #d99312 82%, #f4b83f 100%);
+  color: #241500;
+}
+.plate-dim {
+  filter: grayscale(0.9) brightness(0.62);
+}
+
+/* red badge with angled right edge */
+.red-badge {
+  background: linear-gradient(160deg, var(--red-hot), var(--red) 55%, var(--red-blood));
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 2px 8px rgba(232, 16, 46, 0.4);
+}
+
+/* ---------------- Decorative ---------------- */
+.slashes {
+  background-image: repeating-linear-gradient(
+    -60deg,
+    transparent 0 6px,
+    var(--red) 6px 9px,
+    transparent 9px 15px
+  );
+}
+.hazard {
+  background-image: repeating-linear-gradient(
+    -55deg,
+    rgba(232, 16, 46, 0.9) 0 10px,
+    rgba(10, 10, 12, 0.9) 10px 20px
+  );
+}
+.red-underline {
+  position: relative;
+}
+.red-underline::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -6px;
+  width: 34px;
+  height: 3px;
+  background: var(--red);
+  box-shadow: 0 0 10px rgba(232, 16, 46, 0.8);
+}
+
+/* grain */
+.noise::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.16'/%3E%3C/svg%3E");
+}
+.vignette::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(120% 90% at 50% 42%, transparent 55%, rgba(0, 0, 0, 0.55) 100%);
+}
+
+/* ---------------- Bracket tree geometry ---------------- */
+.bnode {
+  display: flex;
+  align-items: center;
+}
+.bkids {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  flex-shrink: 0;
+}
+.bkid {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  position: relative;
+  padding-right: var(--bgap);
+}
+.bkid::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: var(--bgap);
+  height: 2px;
+  background: var(--connector);
+  transition: background 0.4s ease, box-shadow 0.4s ease;
+}
+.bkids::before {
+  content: "";
+  position: absolute;
+  right: 0;
+  /* el tramo vertical va del centro del 1er hijo al centro del último
+     (--k = nº de hijos): 2 hijos → 25%/75% (clásico), 4 hijos → 12.5%/87.5% */
+  top: calc(100% / (var(--k, 2) * 2));
+  bottom: calc(100% / (var(--k, 2) * 2));
+  width: 2px;
+  background: var(--connector);
+  transition: background 0.4s ease;
+}
+.bcard-wrap {
+  position: relative;
+  margin-left: var(--stub);
+  flex-shrink: 0;
+}
+.bcard-wrap::before {
+  content: "";
+  position: absolute;
+  left: calc(-1 * var(--stub));
+  top: 50%;
+  transform: translateY(-50%);
+  width: var(--stub);
+  height: 2px;
+  background: var(--connector);
+  transition: background 0.4s ease, box-shadow 0.4s ease;
+}
+/* energized connectors */
+.bkid.won::after {
+  background: var(--red-hot);
+  box-shadow: 0 0 9px rgba(255, 36, 64, 0.85);
+}
+.bkids.lit::before {
+  background: var(--red-hot);
+  box-shadow: 0 0 9px rgba(255, 36, 64, 0.7);
+}
+.bcard-wrap.won::before {
+  background: var(--red-hot);
+  box-shadow: 0 0 9px rgba(255, 36, 64, 0.85);
+}
+/* mirrored half */
+.bnode.mirror {
+  flex-direction: row-reverse;
+}
+.bnode.mirror .bkid {
+  padding-right: 0;
+  padding-left: var(--bgap);
+}
+.bnode.mirror .bkid::after {
+  right: auto;
+  left: 0;
+}
+.bnode.mirror .bkids::before {
+  right: auto;
+  left: 0;
+}
+.bnode.mirror .bcard-wrap {
+  margin-left: 0;
+  margin-right: var(--stub);
+}
+.bnode.mirror .bcard-wrap::before {
+  left: auto;
+  right: calc(-1 * var(--stub));
+}
+/* columna de hijos del final (FFA): lado derecho en espejo */
+.bkids.rside::before {
+  right: auto;
+  left: 0;
+}
+.bkids.rside .bkid {
+  padding-right: 0;
+  padding-left: var(--bgap);
+}
+.bkids.rside .bkid::after {
+  right: auto;
+  left: 0;
+}
+
+/* ---------------- Animations ---------------- */
+@keyframes livePulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 1px var(--red-hot), 0 0 18px rgba(255, 36, 64, 0.45), inset 0 0 24px rgba(232, 16, 46, 0.12);
+  }
+  50% {
+    box-shadow: 0 0 0 1px var(--red-hot), 0 0 34px rgba(255, 36, 64, 0.85), inset 0 0 34px rgba(232, 16, 46, 0.25);
+  }
+}
+.live-glow {
+  animation: livePulse 1.6s ease-in-out infinite;
+}
+
+@keyframes sheen {
+  0% {
+    transform: translateX(-130%) skewX(-18deg);
+  }
+  100% {
+    transform: translateX(320%) skewX(-18deg);
+  }
+}
+.sheen {
+  position: relative;
+  overflow: hidden;
+}
+.sheen::after {
+  content: "";
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  width: 34%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+  animation: sheen 2.8s ease-in-out infinite;
+}
+
+@keyframes blinkDot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+.blink {
+  animation: blinkDot 1.1s steps(2, start) infinite;
+}
+
+@keyframes marquee {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee 26s linear infinite;
+}
+
+@keyframes floatY {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-9px);
+  }
+}
+.float-y {
+  animation: floatY 4.5s ease-in-out infinite;
+}
+
+@keyframes glitchShift {
+  0%,
+  86%,
+  100% {
+    transform: translate(0, 0);
+    opacity: 1;
+  }
+  88% {
+    transform: translate(-3px, 1px);
+    opacity: 0.82;
+  }
+  92% {
+    transform: translate(3px, -1px);
+    opacity: 0.9;
+  }
+  96% {
+    transform: translate(-2px, 0);
+  }
+}
+.glitch {
+  animation: glitchShift 3.4s infinite;
+}
+
+@keyframes beat {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  12% {
+    transform: scale(1.06);
+  }
+  24% {
+    transform: scale(1);
+  }
+  36% {
+    transform: scale(1.04);
+  }
+  48% {
+    transform: scale(1);
+  }
+}
+.beat {
+  animation: beat 2.4s ease-in-out infinite;
+}
+
+@keyframes scanline {
+  0% {
+    top: -10%;
+  }
+  100% {
+    top: 110%;
+  }
+}
+.scanline::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 90px;
+  background: linear-gradient(180deg, transparent, rgba(255, 36, 64, 0.08), transparent);
+  animation: scanline 7s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes flashWhite {
+  0% {
+    opacity: 0.95;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.flash-in {
+  animation: flashWhite 0.5s ease-out forwards;
+}
+
+@keyframes rollBlur {
+  0% {
+    filter: blur(0px);
+    opacity: 1;
+  }
+  50% {
+    filter: blur(1.6px);
+    opacity: 0.55;
+  }
+  100% {
+    filter: blur(0px);
+    opacity: 1;
+  }
+}
+.rolling {
+  animation: rollBlur 0.16s linear infinite;
+}
+
+/* ---------------- Bracket slot states ---------------- */
+.slot-wrap {
+  position: relative;
+}
+.slot-winner {
+  outline: 2px solid var(--gold);
+  outline-offset: -1px;
+  box-shadow: 0 0 22px rgba(255, 184, 48, 0.35) !important;
+}
+.slot-loser {
+  filter: grayscale(0.85) brightness(0.55);
+}
+.slot-dq {
+  background: linear-gradient(180deg, #3a0d15, #22070b) !important;
+  color: #ff9aa8 !important;
+}
+.slot-dq .dq-stamp {
+  display: flex;
+}
+.dq-stamp {
+  display: none;
+  position: absolute;
+  inset: 0;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 8px;
+  pointer-events: none;
+}
+.dq-stamp span {
+  border: 2px solid var(--red-hot);
+  color: var(--red-hot);
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 11px;
+  padding: 0 6px;
+  transform: rotate(-8deg);
+  letter-spacing: 0.12em;
+}
+.slot-live {
+  outline: 2px solid var(--red-hot);
+  animation: livePulse 1.6s ease-in-out infinite;
+}
+
+/* ---------------- Misc ---------------- */
+.tab-btn {
+  position: relative;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+.tab-btn.active {
+  background: linear-gradient(160deg, var(--red-hot), var(--red-blood));
+  color: #fff;
+  box-shadow: 0 4px 18px rgba(232, 16, 46, 0.35);
+}
+.field-input {
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid var(--line-2);
+  color: var(--text);
+  font-family: var(--font-goth);
+  font-weight: 600;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+.field-input::placeholder {
+  color: #6b6e78;
+  font-weight: 500;
+}
+.field-input:focus {
+  outline: none;
+  border-color: var(--red);
+  background: rgba(232, 16, 46, 0.07);
+}
+.label-cap {
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  color: var(--muted);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.hover-lift {
+  transition: transform 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.4), box-shadow 0.22s ease, border-color 0.22s ease;
+}
+.hover-lift:hover {
+  transform: translateY(-3px);
+  border-color: rgba(232, 16, 46, 0.55);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(232, 16, 46, 0.25);
+}
+.btn-press {
+  transition: transform 0.12s ease, filter 0.15s ease;
+}
+.btn-press:active {
+  transform: scale(0.96);
+}
+.btn-press:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ---------------- Broadcast rail (próximos matches) ---------------- */
+.rail-card {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.015) 60%), var(--panel-2);
+  border: 1px solid var(--line-2);
+  position: relative;
+  overflow: hidden;
+}
+.rail-card::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--red);
+  box-shadow: 0 0 12px rgba(232, 16, 46, 0.8);
+}
+.rail-time {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  background: linear-gradient(180deg, #ffffff 0%, #d4d6dc 45%, #8f939e 78%, #c7cad2 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+/* cinta scrollable de mini-cards: scrollbar discreta dentro del rail */
+.rail-strip {
+  scrollbar-width: none;
+}
+.rail-strip::-webkit-scrollbar {
+  display: none;
+}
+
+/* fila de header sin scrollbar visible (scroll táctil en móvil) */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* pestaña lateral con bordebiselado espejo */
+.clip-badge-l {
+  clip-path: polygon(9px 0, 100% 0, 100% 100%, 0 100%);
+}
+
+/* ---------------- Reveal del mix: pop al fijar nick ---------------- */
+@keyframes lockPop {
+  0% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  18% {
+    transform: scale(1.06);
+    filter: brightness(2.2) saturate(1.4);
+  }
+  45% {
+    transform: scale(0.99);
+    filter: brightness(1.35);
+  }
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
+.lock-pop {
+  animation: lockPop 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes ringBurst {
+  0% {
+    opacity: 0.9;
+    transform: scale(0.85);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.35);
+  }
+}
+.ring-burst {
+  animation: ringBurst 0.6s ease-out forwards;
+}
+
+/* ---------------- Modo registro (visor) ---------------- */
+@keyframes seatPop {
+  0% {
+    transform: scale(0.6) translateY(14px);
+    opacity: 0;
+    filter: brightness(2);
+  }
+  60% {
+    transform: scale(1.07);
+    opacity: 1;
+    filter: brightness(1.35);
+  }
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
+.seat-pop {
+  animation: seatPop 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.25) both;
+}
+.seat-empty {
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.025);
+}
+@keyframes seatAvailable {
+  0%,
+  100% {
+    border-color: rgba(255, 255, 255, 0.13);
+  }
+  50% {
+    border-color: rgba(255, 36, 64, 0.55);
+  }
+}
+.seat-empty {
+  animation: seatAvailable 2.8s ease-in-out infinite;
+}
+
+/* ---------------- Spotlight del visor ----------------
+   El shake/glitch de pantalla completa se aplica vía Web Animations API
+   (SpectatorView) para poder re-dispararlo en cada evento sin renders.
+   Aquí solo queda la entrada glitch de los nombres del overlay. */
+
+/* entrada con "corte" de glitch para los nombres del spotlight */
+@keyframes glitchIn {
+  0% {
+    clip-path: inset(0 0 84% 0);
+    transform: translateX(-7px);
+    opacity: 0.15;
+  }
+  15% {
+    clip-path: inset(46% 0 28% 0);
+    transform: translateX(6px);
+    opacity: 1;
+  }
+  32% {
+    clip-path: inset(4% 0 2% 0);
+    transform: translateX(-4px);
+  }
+  50% {
+    clip-path: inset(64% 0 6% 0);
+    transform: translateX(3px);
+  }
+  68% {
+    clip-path: inset(12% 0 58% 0);
+    transform: translateX(-2px);
+  }
+  100% {
+    clip-path: inset(0 0 0 0);
+    transform: translateX(0);
+  }
+}
+.glitch-in {
+  animation: glitchIn 0.55s linear 1 both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glitch-in {
+    animation: none;
+  }
+}
+
+/* ============================================================
+   OBS OVERLAY — fuente de navegador transparente (/?obs=1)
+   El browser source de OBS compone el alfa de la página sobre la
+   escena: aquí el fondo es transparente y SOLO se dibuja la barra
+   de cada jugador (PC + nombre + marcador). Sin recuadros de video
+   ni VS: barras grandes, listas para OBS sin escalar.
+   Todo el tamaño usa vw para escalar con el canvas de OBS.
+   ============================================================ */
+
+body.obs-mode {
+  background: transparent !important;
+  overflow: hidden;
+}
+body.obs-mode::-webkit-scrollbar {
+  display: none;
+}
+
+/* aviso mínimo cuando aún no hay torneo activo (estado raro) */
+.obs-no-tournament {
+  align-items: center;
+}
+.obs-no-tournament span {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.35);
+  background: rgba(7, 7, 8, 0.55);
+  padding: 10px 18px;
+}
+
+/* botón "Cards OBS" del header (carcasa oscura, acento rojo al hover) */
+.obs-btn {
+  background: linear-gradient(160deg, #1b1b21, #0e0e12 55%, #17171c);
+  color: #fff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.09),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 2px 8px rgba(0, 0, 0, 0.45);
+}
+.obs-btn:hover {
+  color: #ffb3be;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.09),
+    inset 0 0 0 1px rgba(232, 16, 46, 0.55),
+    0 2px 10px rgba(232, 16, 46, 0.25);
+}
+
+.obs-root {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5vh;
+  background: transparent;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.obs-zone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2.6vw; /* separación amplia entre los dos lados (antes estaba el VS) */
+}
+/* FFA (1v1v1v1): los 4 jugadores en CUADRÍCULA 2×2 — cada card
+   tiene el mismo tamaño que las de 1v1 (PC1·PC2 arriba, PC3·PC4 abajo) */
+.obs-zone.is-ffa {
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
+  gap: 2.2vw 2.6vw;
+  justify-content: center;
+}
+.obs-zone-side {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5vw;
+}
+/* en equipos (2v2/3v3/4v4) cada lado se apila en columna:
+   así cada nick conserva una barra ancha y legible */
+.obs-zone-side.is-col {
+  flex-direction: column;
+  gap: 0.5vw;
+}
+
+.obs-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35vw;
+  min-width: 0;
+}
+.obs-card.is-lose {
+  opacity: 0.38;
+  filter: grayscale(0.55);
+}
+
+/* barra-card GANADORA: brillo dorado + marcador dorado */
+.obs-card.is-winner .obs-bar {
+  border-color: #ffb830;
+  animation: obsWinGlow 1.15s ease-in-out infinite;
+}
+.obs-card.is-winner .obs-score {
+  background: linear-gradient(160deg, #ffd76a, #d99312);
+  color: #241500;
+}
+@keyframes obsWinGlow {
+  0%,
+  100% {
+    box-shadow: 0 0 0.9vw rgba(255, 184, 48, 0.75), inset 0 0 0.7vw rgba(255, 184, 48, 0.18);
+  }
+  50% {
+    box-shadow: 0 0 2.4vw rgba(255, 184, 48, 1), inset 0 0 1.4vw rgba(255, 184, 48, 0.4);
+  }
+}
+
+/* barra-card: [PC] [nombre] [marcador] — el único elemento visible */
+.obs-bar {
+  display: flex;
+  align-items: stretch;
+  height: var(--bar-h, 3.5vw);
+  width: 100%;
+  background: linear-gradient(180deg, #17171d, #0b0b0f);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 0.4vw 1.6vw rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+}
+.obs-bar.is-empty {
+  background: rgba(11, 11, 15, 0.5);
+  border-style: dashed;
+  border-color: rgba(255, 255, 255, 0.22);
+  box-shadow: none;
+}
+.obs-pc {
+  display: flex;
+  align-items: center;
+  padding: 0 0.7vw;
+  background: linear-gradient(160deg, #ff2440, #a30d24);
+  color: #fff;
+  font-weight: 800;
+  font-size: var(--f-pc, 0.95vw);
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+.obs-nick {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 0.8vw;
+  color: #fff;
+  font-weight: 800;
+  font-size: var(--f-nick, 1.4vw);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.obs-score {
+  width: var(--score-w, 2.7vw);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 800;
+  color: #fff;
+  font-size: var(--f-score, 2vw);
+  background: linear-gradient(160deg, #ff2440, #a30d24);
+}
+@keyframes obsScorePop {
+  0% {
+    transform: scale(1.7);
+    filter: brightness(2.2);
+  }
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
+.obs-score-pop {
+  animation: obsScorePop 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.3) both;
+}
+
+/* estado "ESPERANDO MATCH" */
+.obs-wait {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.6);
+  font-weight: 800;
+  font-size: 1.1vw;
+  text-transform: uppercase;
+  letter-spacing: 0.28em;
+  animation: obsWaitPulse 2.2s ease-in-out infinite;
+}
+@keyframes obsWaitPulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* entrada de las cards cuando arranca un match */
+.obs-enter {
+  animation: obsEnter 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.25) both;
+}
+@keyframes obsEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(1.4vw) scale(0.94);
+    filter: brightness(2.4);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: brightness(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .obs-enter,
+  .obs-score-pop,
+  .obs-wait {
+    animation: none;
+  }
+  .obs-card.is-winner .obs-bar {
+    animation: none;
+  }
+}

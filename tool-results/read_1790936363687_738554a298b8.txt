@@ -1,0 +1,702 @@
+     1→     1→"use client";
+     2→     2→
+     3→     3→import React, { useEffect, useMemo, useState } from "react";
+     4→     4→import { motion } from "framer-motion";
+     5→     5→import {
+     6→     6→  Check,
+     7→     7→  ChevronLeft,
+     8→     8→  ChevronRight,
+     9→     9→  CircleDot,
+    10→    10→  Columns3,
+    11→    11→  Hand,
+    12→    12→  LayoutPanelLeft,
+    13→    13→  Loader2,
+    14→    14→  Lock,
+    15→    15→  Maximize2,
+    16→    16→  Minus,
+    17→    17→  Monitor,
+    18→    18→  PanelRightClose,
+    19→    19→  PanelRightOpen,
+    20→    20→  Plus,
+    21→    21→  Radio,
+    22→    22→  RefreshCw,
+    23→    23→  Repeat,
+    24→    24→  Rocket,
+    25→    25→  RotateCcw,
+    26→    26→  SkipForward,
+    27→    27→  Square,
+    28→    28→  TimerReset,
+    29→    29→  Trash2,
+    30→    30→  Trophy,
+    31→    31→  Undo2,
+    32→    32→  UserMinus,
+    33→    33→  UserPlus,
+    34→    34→  Users,
+    35→    35→  Wand2,
+    36→    36→  X,
+    37→    37→  ZoomIn,
+    38→    38→  ZoomOut,
+    39→    39→  Zap,
+    40→    40→} from "lucide-react";
+    41→    41→import { toast } from "sonner";
+    42→    42→import type { Bracket, Modality, Player, Tournament } from "@/lib/types";
+    43→    43→import { MODALITY_LABEL, matchPlayable, playersCapacity } from "@/lib/types";
+    44→    44→import {
+    45→    45→  computeSchedule,
+    46→    46→  doneMatches,
+    47→    47→  fmtTime,
+    48→    48→  groupParticipants,
+    49→    49→  matchTag,
+    50→    50→  roundLabel,
+    51→    51→  totalMatches,
+    52→    52→} from "@/lib/bracket";
+    53→    53→import {
+    54→    54→  deleteBracket,
+    55→    55→  disqualify,
+    56→    56→  fillSeats,
+    57→    57→  launchMix,
+    58→    58→  removeDemoPlayers,
+    59→    59→  replaceFromBank,
+    60→    60→  resetBracketResults,
+    61→    61→  resetMatchScores,
+    62→    62→  setMatchLive,
+    63→    63→  setScore,
+    64→    64→  setSlotOk,
+    65→    65→  setStartAt,
+    66→    66→  setWinner,
+    67→    67→  setStatus,
+    68→    68→} from "@/lib/actions";
+    69→    69→import { BracketTree, FitStage } from "@/components/bracket/BracketTree";
+    70→    70→import { maxSimultaneous, pcForPlayer, pcOccupancy, plannedPcs, pcsLabel } from "@/lib/pcs";
+    71→    71→import { RoundColumns } from "./RoundColumns";
+    72→    72→import { Btn, Confirm, EmptyState, IconBtn, Modal, ModalityChip, StatusChip } from "./ui";
+    73→    73→
+    74→    74→/* ============================================================
+    75→    75→   Vista TORNEO EN VIVO — administración del bracket
+    76→    76→   · Dos vistas: Bracket (árbol) y Rondas (columnas de cards)
+    77→    77→   · Panel lateral colapsable de edición del match
+    78→    78→   · Zoom manual del bracket + auto-fit
+    79→    79→   · Reiniciar marcadores / Reiniciar torneo completo
+    80→    80→   ============================================================ */
+    81→    81→
+    82→    82→type AdminView = "tree" | "rounds";
+    83→    83→
+    84→    84→export function LiveAdminView({
+    85→    85→  tournament,
+    86→    86→  players,
+    87→    87→  bracket,
+    88→    88→  loadingBracket,
+    89→    89→}: {
+    90→    90→  tournament: Tournament | null;
+    91→    91→  players: Player[];
+    92→    92→  bracket: Bracket | null;
+    93→    93→  loadingBracket: boolean;
+    94→    94→}) {
+    95→    95→  const [sel, setSel] = useState<{ r: number; m: number } | null>(null);
+    96→    96→  const [pickBank, setPickBank] = useState<{ r: number; m: number; slotIdx: number } | null>(null);
+    97→    97→  const [confirm, setConfirm] = useState<null | { kind: "remix" | "finish" | "wipe" | "reopen" | "results" | "fill" | "demos" }>(null);
+    98→    98→  const [busy, setBusy] = useState(false);
+    99→    99→  const [view, setView] = useState<AdminView>("tree");
+   100→   100→  const [panelOpen, setPanelOpen] = useState(true);
+   101→   101→  const [zoom, setZoom] = useState<number | null>(null); // null = auto-fit
+   102→   102→  const [startMins, setStartMins] = useState(1);
+   103→   103→
+   104→   104→  const bank = useMemo(() => players.filter((p) => p.seat === "bank"), [players]);
+   105→   105→  const participants = useMemo(
+   106→   106→    () => (tournament ? groupParticipants(players, tournament.modality) : []),
+   107→   107→    [players, tournament]
+   108→   108→  );
+   109→   109→  const officialsCount = useMemo(() => players.filter((p) => p.seat === "off").length, [players]);
+   110→   110→  const demoCount = useMemo(() => players.filter((p) => p.demo).length, [players]);
+   111→   111→  const missingPlayers = tournament ? playersCapacity(tournament) - officialsCount : 0;
+   112→   112→  const schedule = useMemo(
+   113→   113→    () => (tournament && bracket ? computeSchedule(bracket, tournament.startAt, tournament.matchMins) : new Map()),
+   114→   114→    [bracket, tournament]
+   115→   115→  );
+   116→   116→  /* capacidad del escenario: matches simultáneos según las 4 PCs */
+   117→   117→  const maxSim = tournament ? maxSimultaneous(tournament.modality) : 1;
+   118→   118→  const liveCount = useMemo(
+   119→   119→    () => (bracket ? bracket.rounds.reduce((acc, round) => acc + round.filter((x) => x.status === "live").length, 0) : 0),
+   120→   120→    [bracket]
+   121→   121→  );
+   122→   122→
+   123→   123→  /* navegación secuencial de matches (para editar rápido sin recorrer todo) */
+   124→   124→  const flatMatches = useMemo(() => {
+   125→   125→    if (!bracket) return [];
+   126→   126→    const out: { r: number; m: number }[] = [];
+   127→   127→    bracket.rounds.forEach((round, r) => round.forEach((_, m) => out.push({ r, m })));
+   128→   128→    return out;
+   129→   129→  }, [bracket]);
+   130→   130→  const flatIdx = useMemo(() => {
+   131→   131→    if (!sel || !bracket) return -1;
+   132→   132→    return flatMatches.findIndex((x) => x.r === sel.r && x.m === sel.m);
+   133→   133→  }, [flatMatches, sel, bracket]);
+   134→   134→
+   135→   135→  if (!tournament) {
+   136→   136→    return (
+   137→   137→      <div className="panel clip-card">
+   138→   138→        <EmptyState
+   139→   139→          icon={<Radio size={26} />}
+   140→   140→          title="Selecciona un torneo"
+   141→   141→          message="Elige un torneo en el selector superior para administrar el bracket en vivo: ganadores, descalificaciones y reemplazos del banco."
+   142→   142→        />
+   143→   143→      </div>
+   144→   144→    );
+   145→   145→  }
+   146→   146→
+   147→   147→  const guard = async (fn: () => Promise<void>) => {
+   148→   148→    setBusy(true);
+   149→   149→    try {
+   150→   150→      await fn();
+   151→   151→    } catch (e) {
+   152→   152→      toast.error(e instanceof Error ? e.message : "Error de operación");
+   153→   153→    } finally {
+   154→   154→      setBusy(false);
+   155→   155→    }
+   156→   156→  };
+   157→   157→
+   158→   158→  const selMatch = sel && bracket ? bracket.rounds[sel.r]?.[sel.m] : null;
+   159→   159→
+   160→   160→  const stepMatch = (dir: 1 | -1) => {
+   161→   161→    const nx = flatMatches[flatIdx + dir];
+   162→   162→    if (nx) setSel(nx);
+   163→   163→  };
+   164→   164→
+   165→   165→  const zoomStep = (dir: 1 | -1) => {
+   166→   166→    setZoom((z) => {
+   167→   167→      const base = z ?? 0.8;
+   168→   168→      return Math.min(1.8, Math.max(0.3, Math.round((base + dir * 0.1) * 100) / 100));
+   169→   169→    });
+   170→   170→  };
+   171→   171→
+   172→   172→  return (
+   173→   173→    <div className="flex flex-col gap-3 min-h-0">
+   174→   174→      {/* ============ barra de info del torneo ============ */}
+   175→   175→      <div className="panel clip-card p-4 flex flex-wrap items-center gap-3">
+   176→   176→        <div className="flex items-center gap-3 min-w-0 mr-auto">
+   177→   177→          <span className="slashes w-8 h-4 inline-block shrink-0" aria-hidden />
+   178→   178→          <div className="min-w-0">
+   179→   179→            <div className="font-display italic text-[17px] uppercase truncate">{tournament.name}</div>
+   180→   180→            <div className="flex items-center gap-2 mt-1 flex-wrap">
+   181→   181→              <StatusChip status={tournament.status} />
+   182→   182→              <ModalityChip modality={tournament.modality} />
+   183→   183→              {bracket ? (
+   184→   184→                <span
+   185→   185→                  className={`chip clip-tag border ${
+   186→   186→                    liveCount >= maxSim
+   187→   187→                      ? "bg-[#e8102e]/15 text-[#ff8095] border-[#e8102e]/40"
+   188→   188→                      : "bg-[#e8102e]/12 text-[#ff8095] border-[#e8102e]/35"
+   189→   189→                  }`}
+   190→   190→                  title="Matches en juego / máximo simultáneo según las PCs del escenario (4 PCs)"
+   191→   191→                >
+   192→   192→                  <Monitor size={10} />
+   193→   193→                  EN JUEGO {liveCount}/{maxSim}
+   194→   194→                </span>
+   195→   195→              ) : null}
+   196→   196→              {bracket ? (
+   197→   197→                <span className="chip clip-tag bg-white/[0.06] text-[#c9cbd3] border border-white/10">
+   198→   198→                  {doneMatches(bracket)}/{totalMatches(bracket)} MATCHES
+   199→   199→                </span>
+   200→   200→              ) : (
+   201→   201→                <span className="chip clip-tag bg-white/[0.06] text-[#c9cbd3] border border-white/10">
+   202→   202→                  {officialsCount}/{playersCapacity(tournament)} JUGADORES
+   203→   203→                </span>
+   204→   204→              )}
+   205→   205→              {tournament.startAt ? (
+   206→   206→                <span className="chip clip-tag bg-[#ffb830]/12 text-[#ffb830] border border-[#ffb830]/35">
+   207→   207→                  <TimerReset size={10} />
+   208→   208→                  INICIA ≈ {fmtTime(tournament.startAt)}
+   209→   209→                </span>
+   210→   210→              ) : null}
+   211→   211→            </div>
+   212→   212→          </div>
+   213→   213→        </div>
+   214→   214→        <span className="text-[9px] font-extrabold uppercase tracking-[0.18em] text-[#6b6e78] hidden md:inline">
+   215→   215→          Cada fase se refleja automáticamente en el visor
+   216→   216→        </span>
+   217→   217→      </div>
+   218→   218→
+   219→   219→      {/* ============ FLUJO POR FASES ============ */}
+   220→   220→      <PhaseBar
+   221→   221→        tournament={tournament}
+   222→   222→        bracket={bracket}
+   223→   223→        participantsCount={participants.length}
+   224→   224→        officialsCount={officialsCount}
+   225→   225→        missingPlayers={missingPlayers}
+   226→   226→        demoCount={demoCount}
+   227→   227→        bankCount={bank.length}
+   228→   228→        startMins={startMins}
+   229→   229→        setStartMins={setStartMins}
+   230→   230→        busy={busy}
+   231→   231→        guard={guard}
+   232→   232→        onConfirm={(kind) => setConfirm({ kind })}
+   233→   233→        onLaunchMix={() =>
+   234→   234→          guard(async () => {
+   235→   235→            await launchMix(tournament.id, players, tournament);
+   236→   236→            setSel(null);
+   237→   237→            toast.success("Mix match lanzado — el visor reproduce la animación");
+   238→   238→          })
+   239→   239→        }
+   240→   240→      />
+   241→   241→
+   242→   242→      {/* ============ cuerpo ============ */}
+   243→   243→      {loadingBracket ? (
+   244→   244→        <div className="panel clip-card p-14 flex items-center justify-center text-[#8e919c]">
+   245→   245→          <Loader2 size={20} className="animate-spin" />
+   246→   246→        </div>
+   247→   247→      ) : !bracket ? (
+   248→   248→        <div className="panel clip-card">
+   249→   249→          <EmptyState
+   250→   250→            icon={<Zap size={26} />}
+   251→   251→            title="Brackets no creados"
+   252→   252→            message={`Cuando estés listo, lanza el MIX MATCH: se randomizarán los ${participants.length} participantes y el visor de espectadores mostrará la animación de llenado de brackets.`}
+   253→   253→            action={
+   254→   254→              <div className="flex flex-wrap gap-2 justify-center">
+   255→   255→                <Btn
+   256→   256→                  variant="red"
+   257→   257→                  disabled={participants.length < 2}
+   258→   258→                  onClick={() =>
+   259→   259→                    guard(async () => {
+   260→   260→                      await launchMix(tournament.id, players, tournament);
+   261→   261→                      toast.success("Mix match lanzado");
+   262→   262→                    })
+   263→   263→                  }
+   264→   264→                >
+   265→   265→                  <Rocket size={13} />
+   266→   266→                  Lanzar mix match
+   267→   267→                </Btn>
+   268→   268→                <Btn
+   269→   269→                  variant="dark"
+   270→   270→                  onClick={() =>
+   271→   271→                    guard(async () => {
+   272→   272→                      await setStartAt(tournament.id, Date.now() + startMins * 60_000);
+   273→   273→                      toast.success(`Inicio configurado en ${startMins} min — el visor cambia a brackets con el cronómetro`);
+   274→   274→                    })
+   275→   275→                  }
+   276→   276→                >
+   277→   277→                  <TimerReset size={13} />
+   278→   278→                  Inicio en {startMins} min
+   279→   279→                </Btn>
+   280→   280→              </div>
+   281→   281→            }
+   282→   282→          />
+   283→   283→          {/* vista previa de participantes */}
+   284→   284→          {participants.length > 0 ? (
+   285→   285→            <div className="px-5 pb-5">
+   286→   286→              <div className="label-cap mb-2 flex items-center gap-2">
+   287→   287→                <Users size={11} />
+   288→   288→                Participantes que entrarán al sorteo ({participants.length})
+   289→   289→              </div>
+   290→   290→              <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto">
+   291→   291→                {participants.map((p, i) => (
+   292→   292→                  <span key={p.pid} className="chip clip-tag bg-white/[0.05] text-[#c9cbd3] border border-white/10">
+   293→   293→                    {i + 1}. {p.label}
+   294→   294→                  </span>
+   295→   295→                ))}
+   296→   296→              </div>
+   297→   297→            </div>
+   298→   298→          ) : null}
+   299→   299→        </div>
+   300→   300→      ) : (
+   301→   301→        <>
+   302→   302→          {/* ============ toolbar de vistas ============ */}
+   303→   303→          <div className="panel clip-card-sm px-3 py-2 flex flex-wrap items-center gap-2">
+   304→   304→            <div className="flex gap-1 p-0.5 bg-black/40 border border-white/10" role="radiogroup" aria-label="Vista del bracket">
+   305→   305→              <button
+   306→   306→                type="button"
+   307→   307→                role="radio"
+   308→   308→                aria-checked={view === "tree"}
+   309→   309→                onClick={() => setView("tree")}
+   310→   310→                className={`btn-press clip-tag px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-[0.12em] flex items-center gap-1.5 transition-colors ${
+   311→   311→                  view === "tree" ? "bg-[linear-gradient(160deg,#ff2440,#a30d24)] text-white" : "text-[#8e919c] hover:text-white"
+   312→   312→                }`}
+   313→   313→              >
+   314→   314→                <LayoutPanelLeft size={12} />
+   315→   315→                Bracket
+   316→   316→              </button>
+   317→   317→              <button
+   318→   318→                type="button"
+   319→   319→                role="radio"
+   320→   320→                aria-checked={view === "rounds"}
+   321→   321→                onClick={() => setView("rounds")}
+   322→   322→                className={`btn-press clip-tag px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-[0.12em] flex items-center gap-1.5 transition-colors ${
+   323→   323→                  view === "rounds" ? "bg-[linear-gradient(160deg,#ff2440,#a30d24)] text-white" : "text-[#8e919c] hover:text-white"
+   324→   324→                }`}
+   325→   325→              >
+   326→   326→                <Columns3 size={12} />
+   327→   327→                Rondas
+   328→   328→              </button>
+   329→   329→            </div>
+   330→   330→
+   331→   331→            {selMatch ? (
+   332→   332→              <span className="chip clip-tag bg-[#e8102e]/15 text-[#ff8095] border border-[#e8102e]/40 text-[9px] flex items-center gap-1.5">
+   333→   333→                <Hand size={10} />
+   334→   334→                {matchTag(bracket, sel!.r, sel!.m)} seleccionado
+   335→   335→              </span>
+   336→   336→            ) : (
+   337→   337→              <span className="text-[9px] font-extrabold uppercase tracking-[0.16em] text-[#6b6e78] hidden sm:inline">
+   338→   338→                Clic en un match para administrarlo
+   339→   339→              </span>
+   340→   340→            )}
+   341→   341→
+   342→   342→            <div className="ml-auto flex items-center gap-1.5">
+   343→   343→              {/* navegación prev/next */}
+   344→   344→              <div className="flex items-center gap-1">
+   345→   345→                <IconBtn title="Match anterior" disabled={flatIdx <= 0} onClick={() => stepMatch(-1)}>
+   346→   346→                  <ChevronLeft size={14} />
+   347→   347→                </IconBtn>
+   348→   348→                <IconBtn title="Match siguiente" disabled={flatIdx < 0 || flatIdx >= flatMatches.length - 1} onClick={() => stepMatch(1)}>
+   349→   349→                  <ChevronRight size={14} />
+   350→   350→                </IconBtn>
+   351→   351→              </div>
+   352→   352→
+   353→   353→              {/* zoom (solo vista bracket) */}
+   354→   354→              {view === "tree" ? (
+   355→   355→                <div className="flex items-center gap-1 pl-2 border-l border-white/10">
+   356→   356→                  <IconBtn title="Alejar" onClick={() => zoomStep(-1)}>
+   357→   357→                    <ZoomOut size={14} />
+   358→   358→                  </IconBtn>
+   359→   359→                  <span className="text-[9px] font-extrabold tabular-nums text-[#8e919c] w-10 text-center uppercase">
+   360→   360→                    {zoom ? `${Math.round(zoom * 100)}%` : "AUTO"}
+   361→   361→                  </span>
+   362→   362→                  <IconBtn title="Acercar" onClick={() => zoomStep(1)}>
+   363→   363→                    <ZoomIn size={14} />
+   364→   364→                  </IconBtn>
+   365→   365→                  <IconBtn title="Ajustar a la pantalla" active={zoom === null} onClick={() => setZoom(null)}>
+   366→   366→                    <Maximize2 size={13} />
+   367→   367→                  </IconBtn>
+   368→   368→                </div>
+   369→   369→              ) : null}
+   370→   370→
+   371→   371→              {/* toggle panel lateral */}
+   372→   372→              <button
+   373→   373→                type="button"
+   374→   374→                onClick={() => setPanelOpen((v) => !v)}
+   375→   375→                title={panelOpen ? "Ocultar panel del match" : "Mostrar panel del match"}
+   376→   376→                aria-pressed={panelOpen}
+   377→   377→                className={`btn-press p-2 border transition-colors hidden xl:inline-flex ${
+   378→   378→                  panelOpen
+   379→   379→                    ? "border-[#e8102e]/60 bg-[#e8102e]/10 text-white"
+   380→   380→                    : "border-white/12 text-[#8e919c] hover:text-white"
+   381→   381→                }`}
+   382→   382→              >
+   383→   383→                {panelOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}
+   384→   384→              </button>
+   385→   385→            </div>
+   386→   386→          </div>
+   387→   387→
+   388→   388→          {/* ============ stage + panel lateral colapsable ============ */}
+   389→   389→          <div className="flex gap-3 items-stretch min-h-0">
+   390→   390→            {/* área principal */}
+   391→   391→            <div className="flex-1 min-w-0 min-h-0">
+   392→   392→              <div className="panel clip-card p-3 min-h-[420px] h-[calc(100vh-330px)] max-h-[80vh] flex flex-col">
+   393→   393→                <div className="flex items-center justify-between px-2 pb-2">
+   394→   394→                  <span className="label-cap">
+   395→   395→                    {view === "tree" ? "Bracket · clic en un match para administrar" : "Rondas · cards seleccionables con botón de ganador directo"}
+   396→   396→                  </span>
+   397→   397→                  <span className="label-cap">{MODALITY_LABEL[tournament.modality]} · a {tournament.winsNeeded} wins</span>
+   398→   398→                </div>
+   399→   399→
+   400→   400→                {/* monitor del escenario: asignación de las 4 PCs por match */}
+   401→   401→                <PcDock tournament={tournament} bracket={bracket} onSelectMatch={(r, m) => setSel({ r, m })} />
+   402→   402→
+   403→   403→                {view === "tree" ? (
+   404→   404→                  <div className="flex-1 min-h-0 border border-white/8 bg-black/30 clip-card-sm">
+   405→   405→                    <FitStage deps={[bracket, tournament.modality, zoom]} maxScale={0.95} minScale={0.4} zoom={zoom} className="w-full h-full">
+   406→   406→                      <BracketTree
+   407→   407→                        bracket={bracket}
+   408→   408→                        modality={tournament.modality}
+   409→   409→                        mode="admin"
+   410→   410→                        selectedId={selMatch?.id ?? null}
+   411→   411→                        onSelectMatch={(r, m) => setSel({ r, m })}
+   412→   412→                        schedule={schedule}
+   413→   413→                        showTimes
+   414→   414→                      />
+   415→   415→                    </FitStage>
+   416→   416→                  </div>
+   417→   417→                ) : (
+   418→   418→                  <RoundColumns
+   419→   419→                    bracket={bracket}
+   420→   420→                    modality={tournament.modality}
+   421→   421→                    times={schedule}
+   422→   422→                    selectedId={selMatch?.id ?? null}
+   423→   423→                    onSelectMatch={(r, m) => setSel({ r, m })}
+   424→   424→                    onPickWinner={(r, m, slotIdx) =>
+   425→   425→                      guard(async () => {
+   426→   426→                        await setWinner(tournament.id, r, m, slotIdx);
+   427→   427→                        setSel({ r, m });
+   428→   428→                        toast.success(`${bracket.rounds[r][m].slots[slotIdx].label} avanza`);
+   429→   429→                      })
+   430→   430→                    }
+   431→   431→                  />
+   432→   432→                )}
+   433→   433→              </div>
+   434→   434→            </div>
+   435→   435→
+   436→   436→            {/* panel lateral (desktop, colapsable) */}
+   437→   437→            <aside
+   438→   438→              className={`hidden xl:block shrink-0 overflow-hidden transition-[width] duration-300 ease-out ${
+   439→   439→                panelOpen ? "w-[376px]" : "w-0"
+   440→   440→              }`}
+   441→   441→              aria-hidden={!panelOpen}
+   442→   442→            >
+   443→   443→              <div className="w-[376px] h-full">
+   444→   444→                <MatchPanel
+   445→   445→                  tournament={tournament}
+   446→   446→                  bracket={bracket}
+   447→   447→                  sel={sel}
+   448→   448→                  setSel={setSel}
+   449→   449→                  selMatch={selMatch}
+   450→   450→                  schedule={schedule}
+   451→   451→                  bank={bank}
+   452→   452→                  onClose={() => setPanelOpen(false)}
+   453→   453→                  guard={guard}
+   454→   454→                  setPickBank={setPickBank}
+   455→   455→                  busy={busy}
+   456→   456→                  stepMatch={stepMatch}
+   457→   457→                />
+   458→   458→              </div>
+   459→   459→            </aside>
+   460→   460→          </div>
+   461→   461→
+   462→   462→          {/* panel del match (móvil/tablet: debajo) */}
+   463→   463→          <div className="xl:hidden">
+   464→   464→            <MatchPanel
+   465→   465→              tournament={tournament}
+   466→   466→              bracket={bracket}
+   467→   467→              sel={sel}
+   468→   468→              setSel={setSel}
+   469→   469→              selMatch={selMatch}
+   470→   470→              schedule={schedule}
+   471→   471→              bank={bank}
+   472→   472→              onClose={() => setSel(null)}
+   473→   473→              guard={guard}
+   474→   474→              setPickBank={setPickBank}
+   475→   475→              busy={busy}
+   476→   476→              stepMatch={stepMatch}
+   477→   477→            />
+   478→   478→          </div>
+   479→   479→
+   480→   480→          {/* pestaña flotante para reabrir el panel en desktop */}
+   481→   481→          {!panelOpen && selMatch ? (
+   482→   482→            <button
+   483→   483→              type="button"
+   484→   484→              onClick={() => setPanelOpen(true)}
+   485→   485→              className="btn-press fixed right-0 top-1/2 -translate-y-1/2 z-40 hidden xl:flex flex-col items-center gap-2 red-badge clip-badge-l px-2 py-4 text-[10px] font-extrabold uppercase tracking-[0.2em] shadow-[0_10px_30px_rgba(232,16,46,0.4)]"
+   486→   486→              style={{ writingMode: "vertical-rl" }}
+   487→   487→            >
+   488→   488→              <ChevronLeft size={12} />
+   489→   489→              Panel del match
+   490→   490→            </button>
+   491→   491→          ) : null}
+   492→   492→        </>
+   493→   493→      )}
+   494→   494→
+   495→   495→      {/* ============ modal banco ============ */}
+   496→   496→      <Modal open={!!pickBank} onClose={() => setPickBank(null)} title="Reemplazar desde el banco">
+   497→   497→        <p className="text-[11px] font-bold text-[#8e919c] uppercase tracking-wider mb-3">
+   498→   498→          Selecciona la reserva que entrará al match
+   499→   499→        </p>
+   500→   500→        <div className="space-y-2 max-h-72 overflow-y-auto">
+   501→   501→          {bank.length === 0 ? (
+   502→   502→            <p className="text-[11px] font-bold text-[#6b6e78] uppercase">No hay jugadores en el banco</p>
+   503→   503→          ) : (
+   504→   504→            bank.map((p) => (
+   505→   505→              <button
+   506→   506→                key={p.id}
+   507→   507→                type="button"
+   508→   508→                onClick={async () => {
+   509→   509→                  if (!pickBank || !tournament) return;
+   510→   510→                  await guard(async () => {
+   511→   511→                    await replaceFromBank(tournament.id, pickBank.r, pickBank.m, pickBank.slotIdx, p, tournament.modality);
+   512→   512→                    toast.success(`${p.nick} entra al match`);
+   513→   513→                    setPickBank(null);
+   514→   514→                  });
+   515→   515→                }}
+   516→   516→                className="w-full panel-2 clip-card-sm flex items-center gap-3 px-3 py-2.5 hover:border-[#ffb830]/50 text-left transition-colors"
+   517→   517→              >
+   518→   518→                <span className="w-10 h-7 clip-badge red-badge flex items-center justify-center">
+   519→   519→                  <SkipForward size={12} />
+   520→   520→                </span>
+   521→   521→                <span className="min-w-0 flex-1">
+   522→   522→                  <span className="block text-[13px] font-extrabold uppercase text-white truncate">{p.nick}</span>
+   523→   523→                  <span className="block text-[10px] font-semibold text-[#8e919c] truncate">{p.name}</span>
+   524→   524→                </span>
+   525→   525→              </button>
+   526→   526→            ))
+   527→   527→          )}
+   528→   528→        </div>
+   529→   529→      </Modal>
+   530→   530→
+   531→   531→      {/* ============ confirmaciones de flujo ============ */}
+   532→   532→      <Confirm
+   533→   533→        open={confirm?.kind === "remix"}
+   534→   534→        onClose={() => setConfirm(null)}
+   535→   535→        danger
+   536→   536→        confirmLabel="Lanzar mix"
+   537→   537→        title="Lanzar mix — reinicio completo"
+   538→   538→        message={`Se borran por completo los resultados anteriores (marcadores, ganadores, descalificaciones) y se crean brackets 100% nuevos con los participantes randomizados. Los jugadores registrados NO se eliminan${missingPlayers > 0 ? ` y los ${missingPlayers} cupos vacíos se completarán con jugadores DEMO para llenar todos los slots` : ""}. El visor reproducirá la animación de mix desde cero.`}
+   539→   539→        onConfirm={() =>
+   540→   540→          tournament &&
+   541→   541→          guard(async () => {
+   542→   542→            await launchMix(tournament.id, players, tournament);
+   543→   543→            setSel(null);
+   544→   544→            toast.success("Mix lanzado — brackets nuevos y limpios");
+   545→   545→          })
+   546→   546→        }
+   547→   547→      />
+   548→   548→      <Confirm
+   549→   549→        open={confirm?.kind === "finish"}
+   550→   550→        onClose={() => setConfirm(null)}
+   551→   551→        confirmLabel="Finalizar"
+   552→   552→        title="Finalizar torneo"
+   553→   553→        message="El visor de espectadores mostrará el podio con el campeón. Podrás reabrir el torneo si necesitas corregir algo."
+   554→   554→        onConfirm={() =>
+   555→   555→          tournament &&
+   556→   556→          guard(async () => {
+   557→   557→            await setStatus(tournament.id, "finished");
+   558→   558→            toast.success("Torneo finalizado — podio activado");
+   559→   559→          })
+   560→   560→        }
+   561→   561→      />
+   562→   562→      <Confirm
+   563→   563→        open={confirm?.kind === "results"}
+   564→   564→        onClose={() => setConfirm(null)}
+   565→   565→        danger
+   566→   566→        confirmLabel="Reiniciar marcadores"
+   567→   567→        title="Reiniciar marcadores del torneo"
+   568→   568→        message="Se limpiarán todos los marcadores, ganadores y descalificaciones. Las llaves del mix se conservan tal cual, listas para jugar de nuevo."
+   569→   569→        onConfirm={() =>
+   570→   570→          tournament &&
+   571→   571→          guard(async () => {
+   572→   572→            await resetBracketResults(tournament.id);
+   573→   573→            setSel(null);
+   574→   574→            toast.success("Marcadores reiniciados — torneo listo de nuevo");
+   575→   575→          })
+   576→   576→        }
+   577→   577→      />
+   578→   578→      <Confirm
+   579→   579→        open={confirm?.kind === "wipe"}
+   580→   580→        onClose={() => setConfirm(null)}
+   581→   581→        danger
+   582→   582→        confirmLabel="Reiniciar todo"
+   583→   583→        title="Reiniciar torneo completo"
+   584→   584→        message="Se eliminará el bracket completo y el torneo volverá a estado de registro abierto. Los jugadores registrados NO se borran: podrás lanzar un nuevo mix."
+   585→   585→        onConfirm={() =>
+   586→   586→          tournament &&
+   587→   587→          guard(async () => {
+   588→   588→            await deleteBracket(tournament.id);
+   589→   589→            setSel(null);
+   590→   590→            setZoom(null);
+   591→   591→            toast.success("Torneo reiniciado");
+   592→   592→          })
+   593→   593→        }
+   594→   594→      />
+   595→   595→      <Confirm
+   596→   596→        open={confirm?.kind === "reopen"}
+   597→   597→        onClose={() => setConfirm(null)}
+   598→   598→        confirmLabel="Reabrir"
+   599→   599→        title="Reabrir torneo"
+   600→   600→        message="El torneo volverá a estado EN VIVO y el podio se ocultará."
+   601→   601→        onConfirm={() =>
+   602→   602→          tournament &&
+   603→   603→          guard(async () => {
+   604→   604→            await setStatus(tournament.id, "live");
+   605→   605→          })
+   606→   606→        }
+   607→   607→      />
+   608→   608→      <Confirm
+   609→   609→        open={confirm?.kind === "fill"}
+   610→   610→        onClose={() => setConfirm(null)}
+   611→   611→        confirmLabel={`Llenar ${missingPlayers} lugares`}
+   612→   612→        title="Llenar registros automáticamente"
+   613→   613→        message={`Se agregarán ${missingPlayers} jugadores de demostración para completar los ${playersCapacity(tournament)} cupos oficiales. Quedan marcados como DEMO y podrás eliminarlos en lote cuando quieras.`}
+   614→   614→        onConfirm={() =>
+   615→   615→          tournament &&
+   616→   616→          guard(async () => {
+   617→   617→            const n = await fillSeats(tournament.id, players, tournament);
+   618→   618→            toast.success(`${n} jugadores agregados — torneo completo`);
+   619→   619→          })
+   620→   620→        }
+   621→   621→      />
+   622→   622→      <Confirm
+   623→   623→        open={confirm?.kind === "demos"}
+   624→   624→        onClose={() => setConfirm(null)}
+   625→   625→        danger
+   626→   626→        confirmLabel={`Eliminar ${demoCount} demo`}
+   627→   627→        title="Eliminar jugadores demo"
+   628→   628→        message={`Se eliminarán los ${demoCount} jugadores generados automáticamente. Los registrados manualmente no se tocan.`}
+   629→   629→        onConfirm={() =>
+   630→   630→          tournament &&
+   631→   631→          guard(async () => {
+   632→   632→            const n = await removeDemoPlayers(tournament.id, players);
+   633→   633→            toast.success(`${n} jugadores demo eliminados`);
+   634→   634→          })
+   635→   635→        }
+   636→   636→      />
+   637→   637→    </div>
+   638→   638→  );
+   639→   639→}
+   640→   640→
+   641→   641→/* ============================================================
+   642→   642→   PC DOCK — monitor del escenario: qué match y quién ocupa
+   643→   643→   cada una de las 4 PCs (● EN JUEGO / PLANIFICADA / LIBRE).
+   644→   644→   Clic en una PC ocupada abre ese match en el panel.
+   645→   645→   ============================================================ */
+   646→   646→function PcDock({
+   647→   647→  tournament,
+   648→   648→  bracket,
+   649→   649→  onSelectMatch,
+   650→   650→}: {
+   651→   651→  tournament: Tournament;
+   652→   652→  bracket: Bracket;
+   653→   653→  onSelectMatch: (r: number, m: number) => void;
+   654→   654→}) {
+   655→   655→  const cells = useMemo(() => pcOccupancy(bracket, tournament.modality), [bracket, tournament.modality]);
+   656→   656→  const maxSim = maxSimultaneous(tournament.modality);
+   657→   657→  return (
+   658→   658→    <div
+   659→   659→      className="shrink-0 mb-2 mx-1 clip-tag border border-white/10 bg-black/40 px-2.5 py-1.5 flex items-stretch gap-1.5 overflow-x-auto"
+   660→   660→      role="group"
+   661→   661→      aria-label="Asignación de PCs del escenario"
+   662→   662→    >
+   663→   663→      <div className="flex flex-col justify-center gap-0.5 shrink-0 pr-2.5 border-r border-white/10 mr-1">
+   664→   664→        <span className="label-cap flex items-center gap-1.5 whitespace-nowrap">
+   665→   665→          <Monitor size={12} className="text-[#e8102e]" />
+   666→   666→          PCs del escenario
+   667→   667→        </span>
+   668→   668→        <span className="text-[8px] font-bold text-[#6b6e78] uppercase tracking-[0.1em] whitespace-nowrap">
+   669→   669→          Máx {maxSim} simultáneo{maxSim > 1 ? "s" : ""}
+   670→   670→        </span>
+   671→   671→      </div>
+   672→   672→      {cells.map((c, i) => {
+   673→   673→        const key = `PC${i + 1}`;
+   674→   674→        const live = c?.status === "live";
+   675→   675→        return (
+   676→   676→          <button
+   677→   677→            key={key}
+   678→   678→            type="button"
+   679→   679→            disabled={!c}
+   680→   680→            onClick={() => c && onSelectMatch(c.r, c.m)}
+   681→   681→            title={c ? `${c.tag} · ${key}${c.label ? ` · ${c.label}` : ""} — clic para administrar el match` : `${key} libre`}
+   682→   682→            className={`btn-press min-w-[138px] flex-1 text-left px-2 py-1 border transition-colors ${
+   683→   683→              live
+   684→   684→                ? "border-[#e8102e]/60 bg-[#e8102e]/[0.08]"
+   685→   685→                : c
+   686→   686→                  ? "border-white/12 bg-white/[0.03] hover:border-[#ffb830]/50"
+   687→   687→                  : "border-dashed border-white/10 bg-transparent cursor-default"
+   688→   688→            }`}
+   689→   689→          >
+   690→   690→            <div className="flex items-center justify-between gap-2">
+   691→   691→              <span
+   692→   692→                className={`flex items-center gap-1 text-[9.5px] font-extrabold tracking-[0.14em] ${
+   693→   693→                  live ? "text-[#ff2440]" : c ? "text-[#c9cbd3]" : "text-[#6b6e78]"
+   694→   694→                }`}
+   695→   695→              >
+   696→   696→                <Monitor size={9} />
+   697→   697→                {key}
+   698→   698→              </span>
+   699→   699→              {c ? (
+   700→   700→                <span className={`text-[8.5px] font-extrabold uppercase tracking-[0.08em] truncate ${live ? "text-[#ff8095]" : "text-[#8e919c]"}`}>
+
+[showing lines 1-700 of 1376; use offset=701 with limit to continue reading]

@@ -1,0 +1,82 @@
+==========================================
+Next.js Windows launcher
+Date: 02/10/2026 10:59:17.72
+Folder: C:\Users\Node\Downloads\Gaming Fest2026\App
+Mode: dev
+URL: http://localhost:3000
+==========================================
+
+[1/5] Checking Node.js...
+[OK] Node.js detected.
+[2/5] Checking npm...
+[OK] npm detected.
+[3/5] Versions: 
+v24.16.0
+El sistema no encuentra la etiqueta por lotes especificada: PrintVersions
+[4/5] Checking port 3000...
+El proceso no tiene acceso al archivo porque est  siendo utilizado por otro proceso.
+[OK] Port 3000 is available.
+[5/5] Checking dependencies...
+El proceso no tiene acceso al archivo porque est  siendo utilizado por otro proceso.
+[INFO] Installing project dependencies...
+El proceso no tiene acceso al archivo porque est  siendo utilizado por otro proceso.
+npm warn deprecated intersection-observer@0.10.0: The Intersection Observer polyfill is no longer needed and can safely be removed. Intersection Observer has been Baseline since 2019.
+npm warn deprecated recharts@2.15.4: 1.x and 2.x branches are no longer active. Bump to Recharts v3 to receive latest features and bugfixes. See https://github.com/recharts/recharts/wiki/3.0-migration-guide
+npm warn deprecated eslint@9.39.5: This version is no longer supported. Please see https://eslint.org/version-support for other options.
+
+added 924 packages, and audited 925 packages in 2m
+
+296 packages are looking for funding
+  run `npm fund` for details
+
+13 vulnerabilities (4 moderate, 9 high)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+
+Run `npm audit` for details.
+[OK] Dependencies installed.
+El proceso no tiene acceso al archivo porque est  siendo utilizado por otro proceso.
+
+[INFO] Prisma schema detected. Generating Prisma Client...
+El proceso no tiene acceso al archivo porque est  siendo utilizado por otro proceso.
+Environment variables loaded from .env
+Prisma schema loaded from prisma\schema.prisma
+
+âœ” Generated Prisma Client (v6.19.3) to .\node_modules\@prisma\client in 50ms
+
+Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+
+Tip: Interested in query caching in just a few lines of code? Try Accelerate today! https://pris.ly/tip-3-accelerate
+
+[OK] Prisma Client generated.
+El proceso no tiene acceso al archivo porque est  siendo utilizado por otro proceso.
+
+==========================================================
+Starting DEVELOPMENT server...
+http://localhost:3000
+
+Press CTRL+C to stop the server.
+==========================================================
+
+El proceso no tiene acceso al archivo porque est  siendo utilizado por otro proceso.
+
+> nextjs_tailwind_shadcn_ts@0.2.1 dev:windows
+> next dev -p 3000
+
+â–² Next.js 16.3.8 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.0.166:3000
+- Environments: .env
+âœ“ Ready in 3.9s
+âœ“ Running next.config.ts took 195ms
+
+â—‹ Compiling / ...
+ GET / 200 in 6.1s (next.js: 5.7s, application-code: 379ms)
+ GET /?v=show&t=v5fIicaacHC94sfiCvkt 200 in 66ms (next.js: 13ms, application-code: 52ms)
+ GET /?obs=1 200 in 48ms (next.js: 7ms, application-code: 41ms)
+ GET /?v=show&t=v5fIicaacHC94sfiCvkt 200 in 102ms (next.js: 23ms, application-code: 79ms)
+^C^C
