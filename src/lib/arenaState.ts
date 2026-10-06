@@ -37,6 +37,7 @@ export interface ArenaState {
   bankPick: BankPickInfo | null;
   schedOpen?: boolean;
   sound?: SoundSignal | null;
+  showPodium?: boolean;
 }
 
 const arenaRef = (tid: string) => doc(fdb, "tournaments", tid, "arena", "state");
@@ -84,6 +85,11 @@ export async function closeBankPick(tid: string) {
 /** El admin muestra u oculta la cartelera de horarios en el visor. */
 export async function setSchedOpen(tid: string, open: boolean) {
   await setDoc(arenaRef(tid), { schedOpen: open } as Partial<ArenaState>, { merge: true });
+}
+
+/** El admin muestra u oculta el podio en el visor. */
+export async function setShowPodium(tid: string, show: boolean) {
+  await setDoc(arenaRef(tid), { showPodium: show } as Partial<ArenaState>, { merge: true });
 }
 
 /** El admin disparó una acción con sonido → avisa al visor para reproducirlo. */

@@ -69,8 +69,8 @@ import {
   setWinner,
   setStatus,
 } from "@/lib/actions";
-import { closeBankPick, emitSound, openBankPick, setSchedOpen, useArenaState } from "@/lib/arenaState";
-import { useSoundPlayer, type SoundEvent } from "@/lib/sounds";
+import { closeBankPick, emitSound, openBankPick, setSchedOpen, setShowPodium, useArenaState } from "@/lib/arenaState";
+import { type SoundEvent } from "@/lib/sounds";
 import { closeTournament, getActiveInfo, openTournament, useActiveTournament } from "@/lib/activeTournament";
 import { useTournaments } from "@/lib/hooks";
 import { useContests } from "@/lib/contestHooks";
@@ -116,11 +116,10 @@ export function LiveAdminView({
      después, los eliminados de la última ronda completada (banco rotativo) */
   const bankInfo = useMemo(() => computeBank(bracket, players), [bracket, players]);
   const arenaState = useArenaState(tournament?.id ?? null);
-  const playSound = useSoundPlayer();
   const schedOpen = arenaState?.schedOpen ?? false;
-  /** Dispara un sonido en el panel local y lo emite al visor. */
+  /** Emite la señal de sonido al visor. NO reproduce localmente en el admin
+      para evitar duplicación — el visor es el único que debe sonar. */
   const fireSound = (event: SoundEvent) => {
-    playSound(event);
     if (tournament) emitSound(tournament.id, event).catch(() => {});
   };
   /* Torneo activo para transmisión (visor + OBS). Solo uno a la vez. */
@@ -151,6 +150,7 @@ export function LiveAdminView({
     if (!bracket) return [];
     const out: { r: number; m: number }[] = [];
     bracket.rounds.forEach((round, r) => round.forEach((_, m) => out.push({ r, m })));
+    if (bracket.thirdPlace) out.push({ r: -1, m: 0 });
     return out;
   }, [bracket]);
   const flatIdx = useMemo(() => {
@@ -181,7 +181,7 @@ export function LiveAdminView({
     }
   };
 
-  const selMatch = sel && bracket ? bracket.rounds[sel.r]?.[sel.m] : null;
+  const selMatch = sel && bracket ? (sel.r === -1 ? bracket.thirdPlace : bracket.rounds[sel.r]?.[sel.m]) ?? null : null;
 
   const stepMatch = (dir: 1 | -1) => {
     const nx = flatMatches[flatIdx + dir];
@@ -314,6 +314,7 @@ export function LiveAdminView({
         busy={busy}
         guard={guard}
         onConfirm={(kind) => setConfirm({ kind })}
+        onFireSound={fireSound}
         onLaunchMix={() =>
           guard(async () => {
             await launchMix(tournament.id, players, tournament);
@@ -540,9 +541,10 @@ export function LiveAdminView({
                     onPickWinner={(r, m, slotIdx) =>
                       guard(async () => {
                         await setWinner(tournament.id, r, m, slotIdx);
-                        fireSound("winner");
                         setSel({ r, m });
-                        toast.success(`${bracket.rounds[r][m].slots[slotIdx].label} avanza`);
+                        const refMatch = r === -1 ? bracket.thirdPlace : bracket.rounds[r]?.[m];
+                        const label = refMatch?.slots[slotIdx]?.label ?? "Jugador";
+                        toast.success(`${label} ${r === -1 ? "gana el 3er lugar" : "avanza"}`);
                       })
                     }
                   />
@@ -572,6 +574,10 @@ export function LiveAdminView({
                   busy={busy}
                   stepMatch={stepMatch}
                   onSound={fireSound}
+                  onShowPodium={() => {
+                    if (tournament) setShowPodium(tournament.id, true).catch(() => {});
+                    toast.success("Podio activado en el visor");
+                  }}
                 />
               </div>
             </aside>
@@ -593,6 +599,10 @@ export function LiveAdminView({
               busy={busy}
               stepMatch={stepMatch}
               onSound={fireSound}
+              onShowPodium={() => {
+                if (tournament) setShowPodium(tournament.id, true).catch(() => {});
+                toast.success("Podio activado en el visor");
+              }}
             />
           </div>
 
@@ -709,15 +719,14 @@ export function LiveAdminView({
       <Confirm
         open={confirm?.kind === "finish"}
         onClose={() => setConfirm(null)}
-        confirmLabel="Finalizar"
-        title="Finalizar torneo"
-        message="El visor de espectadores mostrará el podio con el campeón. Podrás reabrir el torneo si necesitas corregir algo."
+        confirmLabel="Detener"
+        title="Detener torneo"
+        message="El visor mostrará 'Torneo detenido' sobre los brackets. Podrás reabrir el torneo cuando quieras."
         onConfirm={() =>
           tournament &&
           guard(async () => {
             await setStatus(tournament.id, "finished");
-            fireSound("tournamentFinish");
-            toast.success("Torneo finalizado — podio activado");
+            toast.success("Torneo detenido — el visor muestra 'Torneo detenido'");
           })
         }
       />
@@ -936,6 +945,7 @@ function MatchPanel({
   busy,
   stepMatch,
   onSound,
+  onShowPodium,
 }: {
   tournament: Tournament;
   bracket: Bracket;
@@ -950,15 +960,17 @@ function MatchPanel({
   busy: boolean;
   stepMatch: (dir: 1 | -1) => void;
   onSound: (event: SoundEvent) => void;
+  onShowPodium: () => void;
 }) {
   /* capacidad del escenario (4 PCs) + PCs del match seleccionado */
   const maxSim = maxSimultaneous(tournament.modality);
   const liveCount = useMemo(
-    () => bracket.rounds.reduce((acc, round) => acc + round.filter((x) => x.status === "live").length, 0),
+    () => bracket.rounds.reduce((acc, round) => acc + round.filter((x) => x.status === "live").length, 0)
+      + (bracket.thirdPlace?.status === "live" ? 1 : 0),
     [bracket]
   );
   const planned = useMemo(() => plannedPcs(bracket, tournament.modality), [bracket, tournament.modality]);
-  const selPcsStr = selMatch ? pcsLabel(planned.get(selMatch.id)) : "";
+  const selPcsStr = selMatch ? pcsLabel(selMatch.pcs?.length ? selMatch.pcs : planned.get(selMatch.id)) : "";
   const blockedByPcs = !!selMatch && selMatch.status !== "live" && liveCount >= maxSim;
 
   return (
@@ -978,11 +990,13 @@ function MatchPanel({
           {/* encabezado */}
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <div className="font-display italic text-[16px] uppercase">{matchTag(bracket, sel.r, sel.m)}</div>
+              <div className="font-display italic text-[16px] uppercase">{matchTag(bracket, sel!.r, sel!.m)}</div>
               <div className="text-[9px] font-bold text-[#8e919c] uppercase tracking-[0.18em] mt-0.5">
-                {roundLabel(bracket, sel.r) === "GRAN FINAL"
-                  ? "Gran Final"
-                  : `${roundLabel(bracket, sel.r)} · Match ${sel.m + 1}`}
+                {sel!.r === -1
+                  ? "Match de 3er Lugar"
+                  : roundLabel(bracket, sel!.r) === "GRAN FINAL"
+                    ? "Gran Final"
+                    : `${roundLabel(bracket, sel!.r)} · Match ${sel!.m + 1}`}
                 {schedule.get(selMatch.id) ? ` · ≈ ${fmtTime(schedule.get(selMatch.id)!)}` : ""}
               </div>
             </div>
@@ -1026,16 +1040,16 @@ function MatchPanel({
                 key={i}
                 tid={tournament.id}
                 bracket={bracket}
-                r={sel.r}
-                m={sel.m}
+                r={sel!.r}
+                m={sel!.m}
                 slotIdx={i}
                 modality={tournament.modality}
                 winsNeeded={tournament.winsNeeded}
-                pcs={planned.get(selMatch.id)}
+                pcs={selMatch.pcs?.length ? selMatch.pcs : planned.get(selMatch.id)}
                 bankCount={bankInfo.entries.length}
                 onPickBank={() => {
                   if (!tournament || !bracket || !sel) return;
-                  const tag = sel.r === bracket.rounds.length - 1 ? "GRAN FINAL" : matchTag(bracket, sel.r, sel.m);
+                  const tag = sel.r === -1 ? "3ER LUGAR" : sel.r === bracket.rounds.length - 1 ? "GRAN FINAL" : matchTag(bracket, sel.r, sel.m);
                   setPickBank({ r: sel.r, m: sel.m, slotIdx: i });
                   // avisa al visor para mostrar la vista de banco (caster)
                   openBankPick(tournament.id, {
@@ -1068,9 +1082,8 @@ function MatchPanel({
                 onClick={() =>
                   guard(async () => {
                     const turningOn = selMatch.status !== "live";
-                    await setMatchLive(tournament.id, sel.r, sel.m, turningOn, tournament.modality);
+                    await setMatchLive(tournament.id, sel!.r, sel!.m, turningOn, tournament.modality);
                     if (turningOn) {
-                      fireSound("matchLive");
                       toast.success(
                         `Match en juego — PCs asignadas (${maxSim} máximo simultáneo${maxSim > 1 ? "s" : ""})`
                       );
@@ -1091,11 +1104,18 @@ function MatchPanel({
                 )}
               </Btn>
             ) : (
-              <Btn small variant="dark" onClick={() => guard(() => setWinner(tournament.id, sel.r, sel.m, null))}>
+              <Btn small variant="dark" onClick={() => guard(() => setWinner(tournament.id, sel!.r, sel!.m, null))}>
                 <Undo2 size={11} /> Deshacer ganador
               </Btn>
             )}
-            <Btn small variant="ghost" onClick={() => guard(() => resetMatchScores(tournament.id, sel.r, sel.m))}>
+            {/* botón Mostrar podio — solo si es la final y tiene ganador */}
+            {selMatch.status === "done" && selMatch.w !== null && sel!.r === bracket.rounds.length - 1 ? (
+              <Btn small variant="gold" onClick={onShowPodium} title="Muestra el podio en el visor con el campeón">
+                <Trophy size={11} />
+                Mostrar podio
+              </Btn>
+            ) : null}
+            <Btn small variant="ghost" onClick={() => guard(() => resetMatchScores(tournament.id, sel!.r, sel!.m))}>
               <TimerReset size={11} /> Reiniciar match
             </Btn>
           </div>
@@ -1157,8 +1177,9 @@ function SlotRow(props: {
   onSound: (event: SoundEvent) => void;
 }) {
   const { tid, bracket, r, m, slotIdx, bankCount, modality, winsNeeded, pcs, onPickBank, onSound } = props;
-  const slot = bracket.rounds[r][m].slots[slotIdx];
-  const match = bracket.rounds[r][m];
+  const match = r === -1 ? bracket.thirdPlace : bracket.rounds[r]?.[m];
+  if (!match) return null;
+  const slot = match.slots[slotIdx];
   const isWinner = match.status === "done" && match.w === slotIdx;
 
   if (!slot.pid) {
@@ -1237,7 +1258,6 @@ function SlotRow(props: {
           disabled={match.status === "done" || !match.slots.some((s, si) => si !== slotIdx && s.pid)}
           onClick={() => {
             setWinner(tid, r, m, slotIdx)
-              .then(() => onSound("winner"))
               .catch((e) => toast.error(e.message));
           }}
         >
@@ -1370,6 +1390,7 @@ function PhaseBar({
   guard,
   onConfirm,
   onLaunchMix,
+  onFireSound,
 }: {
   tournament: Tournament;
   bracket: Bracket | null;
@@ -1384,6 +1405,7 @@ function PhaseBar({
   guard: Guard;
   onConfirm: (kind: ConfirmKind) => void;
   onLaunchMix: () => void;
+  onFireSound: (event: SoundEvent) => void;
 }) {
   const status = tournament.status;
   const phase = status === "open" ? 0 : status === "closed" ? (tournament.startAt ? 2 : 1) : status === "mixing" ? 3 : status === "live" ? 4 : 5;
@@ -1395,6 +1417,7 @@ function PhaseBar({
     guard(async () => {
       if (!tournament.startAt || tournament.startAt > Date.now()) await setStartAt(tournament.id, Date.now());
       await setStatus(tournament.id, "live");
+      onFireSound("tournamentStart");
       toast.success("Torneo EN VIVO — la transmisión arrancó");
     });
 
@@ -1570,13 +1593,13 @@ function PhaseBar({
           ) : (
             <Btn small variant="red" disabled={busy || !bracket} title={bracket ? "Arranca la transmisión" : "Lanza el mix primero"} onClick={goLive}>
               <Radio size={11} />
-              Pasar a en vivo
+              Iniciar torneo
             </Btn>
           )}
           {status === "live" ? (
-            <Btn small variant="gold" disabled={busy} onClick={() => onConfirm("finish")}>
-              <Trophy size={11} />
-              Finalizar
+            <Btn small variant="dark" disabled={busy} onClick={() => onConfirm("finish")} title="Detiene la transmisión — el visor muestra 'Torneo detenido'">
+              <Square size={11} />
+              Detener torneo
             </Btn>
           ) : null}
         </PhaseCard>

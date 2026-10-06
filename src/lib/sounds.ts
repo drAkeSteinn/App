@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { doc, onSnapshot, setDoc, deleteDoc } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, setDoc, updateDoc } from "firebase/firestore";
 import { fdb } from "./firebase";
 
 /* ============================================================
@@ -23,7 +23,8 @@ export type SoundEvent =
   | "bankSwap"
   | "tournamentFinish"
   | "mixLaunch"
-  | "mixPlace";
+  | "mixPlace"
+  | "tournamentStart";
 
 export interface SoundMeta {
   id: SoundEvent;
@@ -34,11 +35,12 @@ export interface SoundMeta {
 
 export const SOUND_EVENTS: SoundMeta[] = [
   { id: "scoreUp", label: "Subir marcador", desc: "Al sumar una victoria a un jugador", icon: "▲" },
-  { id: "winner", label: "Ganador marcado", desc: "Al definir al ganador de un match", icon: "🏆" },
+  { id: "winner", label: "Ganador marcado", desc: "Al definir al ganador de un match (manual o por score)", icon: "🏆" },
   { id: "matchLive", label: "Match en juego", desc: "Al poner un match en juego (EN VIVO)", icon: "🔴" },
   { id: "bankSwap", label: "Cambio del banco", desc: "Al entrar un reserva del banco al bracket", icon: "🔁" },
-  { id: "mixLaunch", label: "Lanzar mix", desc: "Al lanzar el mix match (sorteo)", icon: "🎲" },
-  { id: "mixPlace", label: "Jugador colocado (mix)", desc: "Al fijarse cada jugador en el bracket durante el mix", icon: "✦" },
+  { id: "mixLaunch", label: "Lanzar mix", desc: "Al lanzar el mix match y arrancar la animación de sorteo", icon: "🎲" },
+  { id: "mixPlace", label: "Jugador colocado (mix)", desc: "En cada tick del random y al fijarse cada jugador en el bracket", icon: "✦" },
+  { id: "tournamentStart", label: "Iniciar torneo", desc: "Al pasar a En vivo (fase 5) — los brackets arrancan", icon: "🚀" },
   { id: "tournamentFinish", label: "Finalizar torneo", desc: "Al finalizar el torneo (podio)", icon: "👑" },
 ];
 
@@ -196,6 +198,15 @@ function synthDefault(event: SoundEvent) {
       tone(ac, { freq: 1320, type: "triangle", start: 0, dur: 0.05, gain: 0.14 });
       tone(ac, { freq: 1760, type: "sine", start: 0.02, dur: 0.04, gain: 0.08 });
       break;
+    case "tournamentStart":
+      // cierre triunfal — brackets listos, torneo arranca
+      tone(ac, { freq: 523, type: "sawtooth", start: 0, dur: 0.15, gain: 0.18 });
+      tone(ac, { freq: 659, type: "sawtooth", start: 0.1, dur: 0.15, gain: 0.18 });
+      tone(ac, { freq: 784, type: "sawtooth", start: 0.2, dur: 0.15, gain: 0.18 });
+      tone(ac, { freq: 1046, type: "sawtooth", start: 0.3, dur: 0.4, gain: 0.22 });
+      tone(ac, { freq: 1318, type: "sine", start: 0.3, dur: 0.4, gain: 0.12 });
+      noise(ac, 0.3, 0.2, 0.05, 3000);
+      break;
     case "tournamentFinish":
       // fanfare ascendente de 4 notas
       tone(ac, { freq: 392, type: "sawtooth", start: 0, dur: 0.18, gain: 0.18 });
@@ -248,4 +259,105 @@ export function useSoundPlayer() {
     soundsRef.current = sounds;
   }, [sounds]);
   return useCallback((event: SoundEvent) => playSound(event, soundsRef.current), []);
+}
+
+/* ============================================================
+   LOOPS DE MÚSICA — melodías de fondo que se reproducen en loop.
+   Almacenadas en Firestore: loops/{loopId} = { name, data, type, volume, createdAt }
+   ============================================================ */
+
+export interface MusicLoop {
+  id: string;
+  name: string;
+  data: string;
+  type: string;
+  volume: number; // 0-100
+  createdAt: number;
+}
+
+const loopsCol = () => collection(fdb, "loops");
+
+/** Hook: carga todos los loops desde Firestore en tiempo real. */
+export function useMusicLoops() {
+  const [loops, setLoops] = useState<MusicLoop[]>([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    const q = query(loopsCol(), orderBy("createdAt", "asc"));
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        setLoops(
+          snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<MusicLoop, "id">) }))
+        );
+        setLoading(false);
+      },
+      () => setLoading(false)
+    );
+    return () => unsub();
+  }, []);
+  return { loops, loading };
+}
+
+/** Sube un loop de música. */
+export async function saveMusicLoop(name: string, data: string, type: string): Promise<string> {
+  const ref = await addDoc(loopsCol(), {
+    name,
+    data,
+    type,
+    volume: 50,
+    createdAt: Date.now(),
+  });
+  return ref.id;
+}
+
+/** Elimina un loop. */
+export async function deleteMusicLoop(id: string): Promise<void> {
+  await deleteDoc(doc(fdb, "loops", id));
+}
+
+/** Actualiza el volumen de un loop. */
+export async function updateLoopVolume(id: string, volume: number): Promise<void> {
+  await updateDoc(doc(fdb, "loops", id), { volume });
+}
+
+/** Hook reproductor de loops — maneja los HTMLAudioElement en loop,
+    con volumen y play/stop individual. */
+export function useLoopPlayer() {
+  const audioRefs = useRef<Map<string, HTMLAudioElement>>(new Map());
+  const [playing, setPlaying] = useState<Set<string>>(new Set());
+
+  const play = useCallback((loop: MusicLoop) => {
+    let el = audioRefs.current.get(loop.id);
+    if (!el) {
+      el = new Audio(loop.data);
+      el.loop = true;
+      el.preload = "auto";
+      audioRefs.current.set(loop.id, el);
+    }
+    el.volume = loop.volume / 100;
+    el.play().catch(() => {});
+    setPlaying((prev) => new Set(prev).add(loop.id));
+  }, []);
+
+  const stop = useCallback((id: string) => {
+    const el = audioRefs.current.get(id);
+    if (el) {
+      el.pause();
+      el.currentTime = 0;
+    }
+    setPlaying((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }, []);
+
+  const setVolume = useCallback((loop: MusicLoop) => {
+    const el = audioRefs.current.get(loop.id);
+    if (el) el.volume = loop.volume / 100;
+  }, []);
+
+  const isPlaying = useCallback((id: string) => playing.has(id), [playing]);
+
+  return { play, stop, setVolume, isPlaying };
 }

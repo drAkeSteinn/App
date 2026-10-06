@@ -59,6 +59,7 @@ export interface Bracket {
   rounds: Match[][];
   createdAt: number;
   s?: number; // slots (participantes) por match: 2 por defecto, 4 en FFA
+  thirdPlace?: Match | null; // match de 3er lugar (solo S=2, 1v1..4v4)
 }
 
 export const MODALITY_LABEL: Record<number, string> = {

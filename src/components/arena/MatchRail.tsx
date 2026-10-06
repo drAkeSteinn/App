@@ -42,7 +42,7 @@ interface UpcomingInfo {
   pcs: string; // PCs asignadas/planificadas, ej. "PC1 · PC2"
 }
 
-/** ¿Hay al menos un match elegible para el rail? (evita renderizarlo vacío) */
+/** ¿Hay al menos un match elegible para el rail? (incluye thirdPlace) */
 export function hasRailMatches(bracket: Bracket, schedule: Map<string, number>): boolean {
   for (const round of bracket.rounds) {
     for (const match of round) {
@@ -51,6 +51,10 @@ export function hasRailMatches(bracket: Bracket, schedule: Map<string, number>):
       if (!matchPlayable(match)) continue;
       return true;
     }
+  }
+  if (bracket.thirdPlace) {
+    const tp = bracket.thirdPlace;
+    if (tp.status !== "done" && schedule.get(tp.id) && matchPlayable(tp)) return true;
   }
   return false;
 }
@@ -268,7 +272,6 @@ export function MatchRail({
       round.forEach((match, m) => {
         if (match.bye) return;
         const t = schedule.get(match.id);
-        // solo programados: con hora, SIN resultado y con participantes suficientes
         if (match.status === "done" || !t) return;
         if (!matchPlayable(match)) return;
         out.push({
@@ -283,6 +286,23 @@ export function MatchRail({
         });
       })
     );
+    // incluir el match de 3er lugar si existe y es jugable
+    if (bracket.thirdPlace) {
+      const tp = bracket.thirdPlace;
+      const t = schedule.get(tp.id);
+      if (tp.status !== "done" && t && matchPlayable(tp)) {
+        out.push({
+          id: tp.id,
+          round: "3ER",
+          num: 1,
+          tag: "3ER LUGAR",
+          parts: tp.slots.map((s) => ({ name: s.label || "—", score: s.score })),
+          time: t,
+          live: tp.status === "live",
+          pcs: pcsLabel(pcsMap.get(tp.id)),
+        });
+      }
+    }
     // en juego primero, luego por hora
     out.sort((x, y) => (x.live === y.live ? x.time - y.time : x.live ? -1 : 1));
     return out;

@@ -82,6 +82,28 @@ function findSpotlightEvent(
       }
     }
   }
+  // verificar también el match de 3er lugar
+  if (cur.thirdPlace && prev.thirdPlace) {
+    const tp = cur.thirdPlace;
+    const oldTp = prev.thirdPlace;
+    const becameDone = tp.status === "done" && oldTp.status !== "done";
+    const becameLive = tp.status === "live" && oldTp.status !== "live";
+    if (becameDone || becameLive) {
+      const pcs = tp.pcs?.length ? tp.pcs : oldTp.pcs;
+      return {
+        id: `${tp.id}-${tp.status}-${tp.w}-${Date.now()}`,
+        kind: tp.status === "live" ? "live" : "win",
+        tag: "3ER LUGAR",
+        players: tp.slots.map((s, i) => ({
+          name: s.label || "—",
+          score: s.score ?? 0,
+          pcs: pcsForSide(modality, pcs, i),
+        })),
+        winner: tp.w,
+        winsNeeded,
+      };
+    }
+  }
   return null;
 }
 
@@ -335,7 +357,7 @@ export function SpectatorView({ tid }: { tid: string | null }) {
   const status = tournament?.status ?? "open";
   const [override, setOverride] = useState<{ status: Tournament["status"]; mode: ViewerMode } | null>(null);
   const [revealCount, setRevealCount] = useState(0);
-  const [showPodium, setShowPodium] = useState(true);
+  const [showPodium, setShowPodium] = useState(false);
   const [spotlight, setSpotlight] = useState<SpotlightData | null>(null);
   const [subEnter, setSubEnter] = useState<SubEnterData | null>(null);
   const prevBracketRef = useRef<{ tid: string | null; bracket: Bracket } | null>(null);
@@ -397,6 +419,8 @@ export function SpectatorView({ tid }: { tid: string | null }) {
       setRevealCount(0);
       setShowPodium(false);
     });
+    // el sonido de inicio del mix (mixLaunch) ya lo dispara el admin
+    // al lanzar el mix — no duplicar aquí
     toRef.current = setTimeout(() => {
       ivRef.current = setInterval(() => {
         setRevealCount((c) => {
@@ -404,6 +428,8 @@ export function SpectatorView({ tid }: { tid: string | null }) {
             if (ivRef.current) clearInterval(ivRef.current);
             return c;
           }
+          // el sonido de cada tick (mixPlace) lo dispara el effect
+          // que vigila revealCount — no duplicar aquí
           return c + 1;
         });
       }, 240);
@@ -416,11 +442,18 @@ export function SpectatorView({ tid }: { tid: string | null }) {
   }, [status, bracket, totalSlots, mode]);
 
   useEffect(() => {
-    if (status === "finished") {
-      const r = requestAnimationFrame(() => setShowPodium(true));
+    // el podio se controla desde el admin (arenaState.showPodium)
+    // puede activarse en cualquier momento, no solo cuando el torneo está finished
+    if (arenaState?.showPodium) {
+      const r = requestAnimationFrame(() => {
+        setShowPodium(true);
+        playSound("tournamentFinish");
+      });
       return () => cancelAnimationFrame(r);
     }
-  }, [status]);
+    const r = requestAnimationFrame(() => setShowPodium(false));
+    return () => cancelAnimationFrame(r);
+  }, [arenaState?.showPodium, playSound]);
 
   /* ----- SPOTLIGHT: ganador marcado / match en juego → corte dramático.
      Compara cada snapshot del bracket con el anterior; al detectar un match
@@ -430,8 +463,16 @@ export function SpectatorView({ tid }: { tid: string | null }) {
     prevBracketRef.current = effectiveTid && bracket ? { tid: effectiveTid, bracket } : null;
     if (!bracket || !prev || prev.tid !== effectiveTid || status !== "live") return;
     const event = findSpotlightEvent(bracket, prev.bracket, tournament?.winsNeeded ?? 1, tournament?.modality ?? 1);
-    if (event) setSpotlight(event);
-  }, [bracket, status, effectiveTid, tournament]);
+    if (event) {
+      setSpotlight(event);
+      // reproducir sonido según el tipo de evento
+      if (event.kind === "win") {
+        playSound("winner");
+      } else if (event.kind === "live") {
+        playSound("matchLive");
+      }
+    }
+  }, [bracket, status, effectiveTid, tournament, playSound]);
 
   /* el corte se va solo tras 10 segundos (para ver bien quién ganó y qué
      match está en juego) y regresa a los brackets */
@@ -530,7 +571,11 @@ export function SpectatorView({ tid }: { tid: string | null }) {
     const sig = arenaState?.sound;
     if (!sig || sig.id === lastSoundId.current) return;
     lastSoundId.current = sig.id;
-    playSound(sig.event as SoundEvent);
+    // validar que el evento existe antes de reproducirlo
+    const validEvents = ["scoreUp", "winner", "matchLive", "bankSwap", "tournamentFinish", "mixLaunch", "tournamentStart"];
+    if (validEvents.includes(sig.event)) {
+      playSound(sig.event as SoundEvent);
+    }
   }, [arenaState?.sound, playSound]);
 
   const prevReveal = useRef(0);
@@ -539,11 +584,12 @@ export function SpectatorView({ tid }: { tid: string | null }) {
       prevReveal.current = revealCount;
       return;
     }
-    if (revealCount > prevReveal.current) {
+    // en cada tick del random → sonido de colocación
+    if (revealCount > prevReveal.current && revealCount < totalSlots) {
       playSound("mixPlace");
     }
     prevReveal.current = revealCount;
-  }, [revealCount, status, mode, playSound]);
+  }, [revealCount, status, mode, playSound, totalSlots]);
 
   const schedule = useMemo(
     () => (tournament && bracket ? computeSchedule(bracket, tournament.startAt, tournament.matchMins) : new Map<string, number>()),
@@ -756,24 +802,30 @@ export function SpectatorView({ tid }: { tid: string | null }) {
           ) : null}
         </AnimatePresence>
 
-        {/* podio */}
+        {/* podio — cuando el admin lo activa (showPodium) */}
         <AnimatePresence>
-          {status === "finished" && bracket && showPodium && mode === "brackets" ? (
+          {bracket && showPodium && mode === "brackets" ? (
             <Podium key="podium" bracket={bracket} tournament={tournament} onClose={() => setShowPodium(false)} />
           ) : null}
         </AnimatePresence>
 
-        {/* botón para volver al podio */}
-        {status === "finished" && bracket && !showPodium && mode === "brackets" ? (
-          <button
-            type="button"
-            onClick={() => setShowPodium(true)}
-            className="btn-press absolute bottom-4 right-4 z-30 clip-btn red-badge px-4 py-2.5 text-[11px] font-extrabold uppercase tracking-[0.16em] flex items-center gap-2"
-          >
-            <Trophy size={13} />
-            Ver podio
-          </button>
-        ) : null}
+        {/* banner "Torneo detenido" cuando está finalizado sin podio */}
+        <AnimatePresence>
+          {status === "finished" && !showPodium && mode === "brackets" ? (
+            <motion.div
+              initial={{ y: 40, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 40, opacity: 0 }}
+              className="relative z-20 shrink-0 border-t border-[#ffb830]/30 bg-[#171307]/90 flex items-center justify-center gap-2 py-2"
+            >
+              <span className="w-2 h-2 bg-[#ffb830] blink" aria-hidden />
+              <span className="text-[10px] font-extrabold tracking-[0.28em] uppercase text-[#ffb830]">
+                Torneo detenido
+              </span>
+              <span className="w-2 h-2 bg-[#ffb830] blink" aria-hidden />
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
 
         {/* cartelera de horarios */}
         <AnimatePresence>

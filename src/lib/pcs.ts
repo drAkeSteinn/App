@@ -195,5 +195,20 @@ export function plannedPcs(b: Bracket, modality: Modality): Map<string, string[]
       }
     }
   }
+
+  // 3) match de 3er lugar (thirdPlace) — PCs en vivo o planificadas
+  if (b.thirdPlace) {
+    const tp = b.thirdPlace;
+    if (tp.status === "live" && tp.pcs?.length) {
+      out.set(tp.id, ffaTrim(modality, tp, tp.pcs));
+    } else if (tp.status === "ready" && tp.slots.filter((s) => s.pid).length >= 2 && !out.has(tp.id)) {
+      const g = firstFreeGroup(modality, used);
+      if (g) {
+        out.set(tp.id, ffaTrim(modality, tp, g));
+        used.add(g.join("|"));
+      }
+    }
+  }
+
   return out;
 }

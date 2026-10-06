@@ -2,9 +2,9 @@
 
 import React, { useLayoutEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Trophy } from "lucide-react";
+import { Clock, Trophy } from "lucide-react";
 import type { Bracket } from "@/lib/types";
-import { roundLabel } from "@/lib/bracket";
+import { roundLabel, fmtTime } from "@/lib/bracket";
 import { MatchCard, type RevealState } from "./MatchCard";
 
 /* ============================================================
@@ -307,6 +307,16 @@ export function BracketTree({
             pool={pool}
           />
           <ChampionPlate bracket={bracket} />
+          {/* match de 3er lugar debajo de la final (solo S=2) */}
+          <ThirdPlaceSection
+            bracket={bracket}
+            modality={modality}
+            mode={mode}
+            selectedId={selectedId}
+            onSelectMatch={onSelectMatch}
+            schedule={schedule}
+            showTimes={showTimes}
+          />
         </div>
         {/* conector derecha -> final */}
         <div className="w-10 flex items-center shrink-0">
@@ -317,6 +327,142 @@ export function BracketTree({
           <Node r={R - 2} m={1} mirror bare ctx={ctx} />
         </div>
       </div>
+    </div>
+  );
+}
+
+/* Match de 3er lugar — se renderiza debajo de la Gran Final.
+   Los perdedores de las semifinales se enfrentan por el 3er lugar. */
+function ThirdPlaceSection({
+  bracket,
+  modality,
+  mode,
+  selectedId,
+  onSelectMatch,
+  schedule,
+  showTimes,
+}: {
+  bracket: Bracket;
+  modality: number;
+  mode: "viewer" | "admin";
+  selectedId?: string | null;
+  onSelectMatch?: (r: number, m: number) => void;
+  schedule: Map<string, number>;
+  showTimes: boolean;
+}) {
+  if (!bracket.thirdPlace) return null;
+  const tp = bracket.thirdPlace;
+  const done = tp.status === "done";
+  const live = tp.status === "live";
+  const bothEmpty = tp.slots.every((s) => !s.pid);
+  const selected = selectedId === tp.id;
+
+  const body = (
+    <div className="w-[var(--cw)] select-none">
+      <div
+        className={`clip-card-sm p-[3px] transition-all ${
+          done ? "bg-[linear-gradient(160deg,#cd7f45,#94502a)]" : live ? "bg-[linear-gradient(160deg,#ff2440,#8f0a1e)]" : selected ? "bg-[linear-gradient(160deg,#ff2440,#8f0a1e)]" : "bg-transparent"
+        } ${live ? "live-glow" : ""}`}
+      >
+        <div className="bg-[#121216] clip-card-sm px-2.5 pt-2 pb-1.5">
+          <div className="flex items-center justify-between mb-[5px] px-[1px] h-[14px]">
+            <span className="text-[8.5px] font-extrabold uppercase tracking-[0.18em] text-[#cd7f45]">3ER LUGAR</span>
+            <span className="flex items-center gap-1.5 min-w-0">
+              {live ? (
+                <span className="text-[8.5px] font-extrabold tracking-[0.2em] text-[#ff2440] blink uppercase">● En juego</span>
+              ) : done ? (
+                <span className="text-[8.5px] font-extrabold tracking-[0.2em] text-[#ffb830] uppercase">Finalizado</span>
+              ) : showTimes && schedule.get(tp.id) ? (
+                <span className="flex items-center gap-1 text-[8.5px] font-bold tracking-[0.08em] text-[#a9adb8] tabular-nums">
+                  <Clock size={8} />
+                  {fmtTime(schedule.get(tp.id)!)}
+                </span>
+              ) : null}
+            </span>
+          </div>
+          {tp.slots.map((s, i) => {
+            const isWinner = done && tp.w === i && !!s.pid;
+            const isLoser = done && tp.w !== i && !!s.pid;
+            const isDq = s.st === "dq";
+            if (!s.pid) {
+              return (
+                <div key={i} className="slot-wrap h-[30px] mb-[3px] border border-dashed border-white/15 bg-black/35 flex items-center gap-1.5 px-2">
+                  <span className="w-1.5 h-1.5 bg-white/15" aria-hidden />
+                  <span className="text-[9px] font-extrabold tracking-[0.22em] text-white/30 uppercase">Por definir</span>
+                </div>
+              );
+            }
+            const cls = [
+              "slot-wrap plate relative h-[30px] mb-[3px] flex items-stretch overflow-hidden",
+              isDq ? "slot-dq" : "",
+              s.st === "rep" ? "slot-sub" : "",
+              isWinner ? "slot-winner" : "",
+              isLoser && !isDq ? "slot-loser" : "",
+              live ? "slot-live" : "",
+            ].filter(Boolean).join(" ");
+            return (
+              <div key={i} className={cls}>
+                <div className="red-badge clip-badge w-[34px] shrink-0 flex items-center justify-center">
+                  <span className="font-display italic text-[15px] leading-none pt-[1px]">{s.score}</span>
+                </div>
+                <div className="flex-1 min-w-0 flex flex-col justify-center px-2 leading-none">
+                  <span className={`text-[11px] font-extrabold uppercase tracking-wide truncate ${isDq ? "text-[#ff9aa8] line-through" : ""}`}>
+                    {s.label}
+                  </span>
+                  {modality > 1 && s.members.length > 1 ? (
+                    <span className={`text-[8.5px] font-bold truncate mt-[2px] ${isDq ? "text-[#ff8095]/70" : "text-[#5a5d68]"}`}>
+                      {s.members.map((mm) => (mm.dq ? `✗${mm.nick}` : mm.nick)).join(" · ")}
+                    </span>
+                  ) : null}
+                </div>
+                {isWinner ? (
+                  <span className="plate-gold chip clip-tag self-center mr-1.5 text-[8px] px-1.5 py-[2px] tracking-[0.1em]">3°</span>
+                ) : null}
+                <div className="dq-stamp"><span>DQ</span></div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col items-center gap-2 mt-4">
+      <div className="flex items-center justify-center gap-[var(--cw)] w-full">
+        <div className="h-[2px] w-10 bg-[var(--connector)]" aria-hidden />
+        <div className="h-[2px] w-10 bg-[var(--connector)]" aria-hidden />
+      </div>
+      <span className="text-[9px] font-extrabold uppercase tracking-[0.24em] text-[#cd7f45] red-underline whitespace-nowrap">
+        3er Lugar
+      </span>
+      {mode === "admin" ? (
+        <motion.div
+          whileHover={{ scale: 1.015 }}
+          whileTap={{ scale: 0.99 }}
+          onClick={() => onSelectMatch?.(-1, 0)}
+          role="button"
+          tabIndex={0}
+          aria-label="Seleccionar match de 3er lugar"
+          className={`cursor-pointer ${selected ? "z-10" : ""}`}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onSelectMatch?.(-1, 0);
+            }
+          }}
+        >
+          {body}
+        </motion.div>
+      ) : (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.3 }}
+        >
+          {body}
+        </motion.div>
+      )}
     </div>
   );
 }

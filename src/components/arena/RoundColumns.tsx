@@ -127,7 +127,8 @@ export function RoundColumns({
           const doneCount = playable.filter((mm) => mm.status === "done").length;
           const isFinal = r === R - 1;
           return (
-            <section key={r} className="w-[264px] shrink-0 flex flex-col">
+            <React.Fragment key={r}>
+            <section className="w-[264px] shrink-0 flex flex-col">
               {/* encabezado de ronda */}
               <div
                 className={`flex items-center justify-between px-3 py-2 mb-2 clip-tag border ${
@@ -249,9 +250,127 @@ export function RoundColumns({
                 })}
               </div>
             </section>
+            </React.Fragment>
           );
         })}
+
+        {/* sección 3er lugar — DESPUÉS de la Gran Final */}
+        {bracket.thirdPlace ? (
+          <ThirdPlaceColumn
+            bracket={bracket}
+            modality={modality}
+            times={times}
+            selectedId={selectedId}
+            onSelectMatch={onSelectMatch}
+            onPickWinner={onPickWinner}
+            showTimes={showTimes}
+            pcsMap={pcsMap}
+          />
+        ) : null}
       </div>
     </div>
+  );
+}
+
+/* Columna del match de 3er lugar — se renderiza ANTES de la Gran Final */
+function ThirdPlaceColumn({
+  bracket,
+  modality,
+  times,
+  selectedId,
+  onSelectMatch,
+  onPickWinner,
+  showTimes,
+  pcsMap,
+}: {
+  bracket: Bracket;
+  modality: Modality;
+  times?: Map<string, number>;
+  selectedId?: string | null;
+  onSelectMatch?: (r: number, m: number) => void;
+  onPickWinner?: (r: number, m: number, slotIdx: number) => void;
+  showTimes?: boolean;
+  pcsMap: Map<string, string[]>;
+}) {
+  if (!bracket.thirdPlace) return null;
+  const tp = bracket.thirdPlace;
+  const tpDone = tp.status === "done";
+  const tpLive = tp.status === "live";
+  const tpTime = times?.get(tp.id);
+  const tpPcs = pcsMap.get(tp.id);
+
+  return (
+    <section className="w-[264px] shrink-0 flex flex-col">
+      <div
+        className="flex items-center justify-between px-3 py-2 mb-2 clip-tag border bg-[rgba(205,127,69,0.12)] border-[#cd7f45]/40"
+      >
+        <span className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-[#cd7f45]">
+          3er Lugar
+        </span>
+        <span className="text-[9px] font-extrabold tabular-nums text-[#8e919c]">
+          {tpDone ? "1/1" : "0/1"}
+        </span>
+      </div>
+      <div className="flex flex-col gap-2 pb-1">
+        <motion.div
+          whileHover={{ scale: 1.01 }}
+          whileTap={{ scale: 0.99 }}
+          onClick={() => onSelectMatch?.(-1, 0)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onSelectMatch?.(-1, 0);
+            }
+          }}
+          role="button"
+          tabIndex={0}
+          aria-pressed={selectedId === tp.id}
+          className={`relative text-left clip-card-sm p-[3px] transition-all cursor-pointer ${
+            selectedId === tp.id
+              ? "bg-[linear-gradient(160deg,#cd7f45,#94502a)] shadow-[0_0_0_2px_rgba(205,127,69,0.35)]"
+              : "bg-transparent hover:bg-white/[0.06]"
+          } ${tpLive ? "live-glow" : ""}`}
+        >
+          <div className="bg-[#121216] clip-card-sm px-2.5 pt-2 pb-1.5">
+            <div className="flex items-center justify-between mb-1.5 h-[16px]">
+              <span className="text-[8.5px] font-extrabold uppercase tracking-[0.16em] text-[#cd7f45]">
+                3ER LUGAR
+              </span>
+              <span className="flex items-center gap-1.5 min-w-0">
+                {tpLive ? (
+                  <span className="text-[8px] font-extrabold tracking-[0.16em] text-[#ff2440] blink uppercase">● EN JUEGO</span>
+                ) : tpDone ? (
+                  <span className="text-[8px] font-extrabold tracking-[0.16em] text-[#ffb830]/90 uppercase">✓ FIN</span>
+                ) : showTimes && tpTime ? (
+                  <span className="flex items-center gap-1 text-[8.5px] font-bold text-[#a9adb8] tabular-nums">
+                    <Clock size={8} />
+                    {fmtTime(tpTime)}
+                  </span>
+                ) : null}
+              </span>
+            </div>
+            {tp.slots.map((_, i) => (
+              <SlotLine
+                key={i}
+                match={tp}
+                slotIdx={i}
+                pcTag={tp.slots[i]?.pid ? pcsCompact(pcsForSide(modality, tpPcs, i)) || undefined : undefined}
+                onPickWinner={
+                  matchPlayable(tp)
+                    ? (slotIdx) => onPickWinner?.(-1, 0, slotIdx)
+                    : undefined
+                }
+              />
+            ))}
+          </div>
+          <span
+            aria-hidden
+            className={`absolute inset-x-[3px] bottom-[3px] h-[2px] ${
+              tpLive ? "bg-[#ff2440]" : tpDone ? "bg-[#cd7f45]" : "bg-white/8"
+            }`}
+          />
+        </motion.div>
+      </div>
+    </section>
   );
 }

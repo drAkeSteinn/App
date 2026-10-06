@@ -215,7 +215,22 @@ export function buildBracket(parts: Participant[], slots: number = 2): Bracket {
   for (let r = 1; r < rounds.length; r++) {
     for (let m = 0; m < rounds[r].length; m++) autoByeAdvance(rounds, r, m, S);
   }
-  return { rounds, createdAt: Date.now(), s: S };
+
+  // match de 3er lugar (solo S=2): los perdedores de las semifinales
+  // se enfrentan. Se crea vacío y se llena cuando se definen los ganadores
+  // de las semis (en applyWin). Si solo hay una ronda (final directa),
+  // no hay semis → no hay match de 3er lugar.
+  let thirdPlace: Match | null = null;
+  if (S === 2 && rounds.length >= 2) {
+    thirdPlace = {
+      id: "thirdPlace",
+      slots: [emptySlot(), emptySlot()],
+      w: null,
+      status: "ready" as const,
+    };
+  }
+
+  return { rounds, createdAt: Date.now(), s: S, thirdPlace };
 }
 
 /** Marca ganador y avanza al siguiente match. Libera las PCs del match. */
@@ -235,6 +250,17 @@ export function applyWin(b: Bracket, r: number, m: number, slotIdx: number) {
   // si el match destino quedó con un único clasado real, avanza directo (bye)
   const nx = nextOf(r, m, S);
   autoByeAdvance(b.rounds, nx.r, nx.m, S);
+
+  // match de 3er lugar (S=2): si es una semifinal, el perdedor avanza al
+  // match de 3er lugar. R = rondas totales, la semifinal es la ronda R-2.
+  if (S === 2 && b.thirdPlace && r === b.rounds.length - 2) {
+    const loserIdx = 1 - slotIdx;
+    const loser = match.slots[loserIdx];
+    if (loser && loser.pid) {
+      // m=0 → slot 0 del 3er lugar, m=1 → slot 1
+      b.thirdPlace.slots[m] = { ...cloneSlot(loser), score: 0, st: "ok", src: match.id };
+    }
+  }
 }
 
 /** Quita el resultado y limpia el slot que avanzó (si proviene de este match). */
@@ -258,6 +284,18 @@ export function applyUnwin(b: Bracket, r: number, m: number) {
         }
         nm.status = "ready";
         nm.w = null;
+      }
+    }
+  }
+  // limpiar el slot del 3er lugar si este match era una semifinal
+  if (S === 2 && b.thirdPlace && r === b.rounds.length - 2) {
+    const tpSlot = b.thirdPlace.slots[m];
+    if (tpSlot && tpSlot.src === match.id) {
+      b.thirdPlace.slots[m] = emptySlot();
+      // si el match de 3er lugar ya tenía resultado, limpiarlo
+      if (b.thirdPlace.status === "done") {
+        b.thirdPlace.w = null;
+        b.thirdPlace.status = "ready";
       }
     }
   }
@@ -316,6 +354,20 @@ export function resetAllResults(b: Bracket) {
       if (match.bye && match.w !== null) advanceSlot(b.rounds, r, m, match.w, b.s ?? 2);
     }
   }
+  // 4) resetear el match de 3er lugar
+  if (b.thirdPlace) {
+    b.thirdPlace.w = null;
+    b.thirdPlace.status = "ready";
+    delete b.thirdPlace.pcs;
+    for (const s of b.thirdPlace.slots) {
+      s.pid = null;
+      s.label = "";
+      s.members = [];
+      s.score = 0;
+      s.st = "ok";
+      delete s.src;
+    }
+  }
 }
 
 /** Tiempo estimado (epoch ms) de inicio de cada match: secuencial según duración
@@ -330,8 +382,15 @@ export function computeSchedule(
   const map = new Map<string, number>();
   if (!startAt || matchMins <= 0) return map;
   let t = startAt;
-  for (const round of bracket.rounds) {
-    for (const match of round) {
+  // programar todas las rondas excepto la última (final) → el 3er lugar va antes
+  const R = bracket.rounds.length;
+  for (let r = 0; r < R; r++) {
+    // si es la última ronda (final), primero programar el 3er lugar
+    if (r === R - 1 && bracket.thirdPlace) {
+      map.set(bracket.thirdPlace.id, t);
+      t += matchMins * 60_000;
+    }
+    for (const match of bracket.rounds[r]) {
       if (match.bye) continue;
       map.set(match.id, t);
       t += matchMins * 60_000;
@@ -341,14 +400,17 @@ export function computeSchedule(
 }
 
 export function totalMatches(bracket: Bracket): number {
-  return bracket.rounds.reduce((acc, r) => acc + r.filter((m) => !m.bye).length, 0);
+  const base = bracket.rounds.reduce((acc, r) => acc + r.filter((m) => !m.bye).length, 0);
+  return base + (bracket.thirdPlace ? 1 : 0);
 }
 
 export function doneMatches(bracket: Bracket): number {
-  return bracket.rounds.reduce(
+  const base = bracket.rounds.reduce(
     (acc, r) => acc + r.filter((m) => !m.bye && m.status === "done" && m.slots.some((s) => s.pid)).length,
     0
   );
+  const tp = bracket.thirdPlace?.status === "done" && bracket.thirdPlace.slots.some((s) => s.pid) ? 1 : 0;
+  return base + tp;
 }
 
 export function roundName(teamsInRound: number): string {
@@ -402,10 +464,11 @@ export function teamsInRound(bracket: Bracket, r: number): number {
    `s` = slots por match (2 clásico · 4 FFA) para reconstruir el árbol. */
 
 export interface BracketDoc {
-  v: 1;
+  v: number;
+  s: number;
   createdAt: number;
-  s?: number;
-  matches: Array<Match & { r: number; m: number }>;
+  matches: (Match & { r: number; m: number })[];
+  thirdPlace?: Match | null;
 }
 
 export function serializeBracket(b: Bracket): BracketDoc {
@@ -413,7 +476,7 @@ export function serializeBracket(b: Bracket): BracketDoc {
   b.rounds.forEach((round, r) =>
     round.forEach((m, mi) => matches.push({ ...m, r, m: mi }))
   );
-  return { v: 1, s: b.s ?? 2, createdAt: b.createdAt, matches };
+  return { v: 1, s: b.s ?? 2, createdAt: b.createdAt, matches, thirdPlace: b.thirdPlace ?? null };
 }
 
 export function deserializeBracket(data: BracketDoc): Bracket {
@@ -425,10 +488,32 @@ export function deserializeBracket(data: BracketDoc): Bracket {
   }
   // compatibilidad: brackets antiguos no traen `s` → inferir de los slots
   const s = data.s ?? data.matches[0]?.slots?.length ?? 2;
-  return { rounds, createdAt: data.createdAt, s };
+  // compatibilidad: brackets antiguos no traen thirdPlace → crearlo si S=2 y R>=2
+  let thirdPlace = data.thirdPlace ?? null;
+  if (!thirdPlace && s === 2 && rounds.length >= 2) {
+    thirdPlace = {
+      id: "thirdPlace",
+      slots: [emptySlot(), emptySlot()],
+      w: null,
+      status: "ready" as const,
+    };
+    // re-llenar los slots si las semis ya tienen ganador
+    const R = rounds.length;
+    for (let m = 0; m < rounds[R - 2].length; m++) {
+      const semi = rounds[R - 2][m];
+      if (semi && semi.w !== null) {
+        const loser = semi.slots[1 - semi.w];
+        if (loser && loser.pid) {
+          thirdPlace.slots[m] = { ...cloneSlot(loser), score: 0, st: "ok", src: semi.id };
+        }
+      }
+    }
+  }
+  return { rounds, createdAt: data.createdAt, s, thirdPlace };
 }
 
 export function matchTag(bracket: Bracket, r: number, m: number): string {
+  if (r === -1) return "3ER LUGAR";
   return r === bracket.rounds.length - 1 ? "GRAN FINAL" : `${roundShortLabel(bracket, r)} · M${m + 1}`;
 }
 
@@ -438,6 +523,7 @@ export function matchTag(bracket: Bracket, r: number, m: number): string {
       2 → SEMIFINALES (el nombre clásico equivale a 2× los matches).
     La última ronda SIEMPRE es la Gran Final. */
 export function roundLabel(bracket: Bracket, r: number): string {
+  if (r === -1) return "3ER LUGAR";
   if (r === bracket.rounds.length - 1) return "GRAN FINAL";
   const S = bracket.s ?? 2;
   const matches = bracket.rounds[r]?.length ?? 0;
@@ -452,9 +538,11 @@ export function roundShortLabel(bracket: Bracket, r: number): string {
   return S > 2 ? roundShort(matches * 2) : roundShort(teamsInRound(bracket, r));
 }
 
-/** Podio: campeón + subcampeón + terceros.
-    · S = 2 (clásico): sub = perdedor de la final; terceros = perdedores de semis.
-    · S > 2 (FFA): sub y terceros = mejores marcadores del resto de la final. */
+/** Podio: campeón + subcampeón + 3er lugar.
+    · S = 2: sub = perdedor de la final; 3er = ganador del match de 3er lugar.
+      Si el ganador del 3er lugar fue sustituido en la final (su pid aparece
+      en los slots de la final), el perdedor del 3er lugar (4to) sube a 3ero.
+    · S > 2 (FFA): sub y 3er = mejores marcadores del resto de la final. */
 export function getPodium(b: Bracket): { champion: MatchSlot | null; second: MatchSlot | null; thirds: MatchSlot[] } {
   const R = b.rounds.length;
   const S = b.s ?? 2;
@@ -466,13 +554,32 @@ export function getPodium(b: Bracket): { champion: MatchSlot | null; second: Mat
     champion = finalMatch.slots[finalMatch.w];
     if (S === 2) {
       second = finalMatch.slots[1 - finalMatch.w];
-      if (R >= 2) {
+      if (b.thirdPlace && b.thirdPlace.w !== null && b.thirdPlace.slots[b.thirdPlace.w]?.pid) {
+        const tpWinner = b.thirdPlace.slots[b.thirdPlace.w];
+        const tpLoserIdx = 1 - b.thirdPlace.w;
+        const tpLoser = b.thirdPlace.slots[tpLoserIdx];
+        // ¿el ganador del 3er lugar fue sustituido en la final?
+        const tpWinnerInFinal = finalMatch.slots.some(
+          (s) => s.pid && s.pid === tpWinner.pid
+        );
+        if (tpWinnerInFinal && tpLoser?.pid) {
+          // el 4to lugar (perdedor del 3er match) sube a 3ero
+          thirds.push(tpLoser);
+        } else {
+          // el ganador del 3er lugar sigue siendo 3ero
+          thirds.push(tpWinner);
+        }
+      } else if (R >= 2) {
+        // fallback: perdedor de semis con mayor score
+        const semiLosers: MatchSlot[] = [];
         for (const semi of b.rounds[R - 2]) {
           if (semi.w !== null) {
             const loser = semi.slots[1 - semi.w];
-            if (loser && loser.pid) thirds.push(loser);
+            if (loser && loser.pid) semiLosers.push(loser);
           }
         }
+        semiLosers.sort((a, z) => z.score - a.score);
+        if (semiLosers.length > 0) thirds.push(semiLosers[0]);
       }
     } else {
       const rest = finalMatch.slots
@@ -481,7 +588,7 @@ export function getPodium(b: Bracket): { champion: MatchSlot | null; second: Mat
         .sort((a, z) => z.s.score - a.s.score)
         .map((x) => x.s);
       second = rest[0] ?? null;
-      thirds.push(...rest.slice(1, 3));
+      if (rest[1]) thirds.push(rest[1]);
     }
   }
   return { champion, second, thirds };

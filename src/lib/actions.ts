@@ -239,25 +239,66 @@ export async function mutateBracket(tid: string, fn: (b: Bracket) => void) {
   });
 }
 
+/* Helper: obtiene el match por (r, m). r = -1 → thirdPlace match. */
+function getMatch(b: Bracket, r: number, m: number): Match | null {
+  if (r === -1) return b.thirdPlace ?? null;
+  return b.rounds[r]?.[m] ?? null;
+}
+
+/* Helper: obtiene todos los matches live (incluye thirdPlace). */
+function allLiveMatches(b: Bracket): Match[] {
+  const out: Match[] = [];
+  for (const round of b.rounds) {
+    for (const x of round) {
+      if (x.status === "live" && x.pcs?.length) out.push(x);
+    }
+  }
+  if (b.thirdPlace && b.thirdPlace.status === "live" && b.thirdPlace.pcs?.length) {
+    out.push(b.thirdPlace);
+  }
+  return out;
+}
+
 export async function setScore(tid: string, r: number, m: number, slotIdx: number, delta: number, winsNeeded: number) {
   await mutateBracket(tid, (b) => {
-    const match = b.rounds[r]?.[m];
+    const match = getMatch(b, r, m);
     const slot = match?.slots[slotIdx];
     if (!match || !slot || !slot.pid || match.status === "done") return;
     slot.score = Math.max(0, Math.min(winsNeeded, slot.score + delta));
-    if (slot.score >= winsNeeded) applyWin(b, r, m, slotIdx);
+    if (slot.score >= winsNeeded) {
+      if (r === -1) {
+        // third place match — marcar ganador directamente (no avanza a ningún lado)
+        match.w = slotIdx;
+        match.status = "done";
+        delete match.pcs;
+      } else {
+        applyWin(b, r, m, slotIdx);
+      }
+    }
   });
 }
 
 export async function setWinner(tid: string, r: number, m: number, slotIdx: number | null) {
   await mutateBracket(tid, (b) => {
-    const match = b.rounds[r]?.[m];
+    const match = getMatch(b, r, m);
     if (!match) return;
     if (slotIdx === null) {
-      applyUnwin(b, r, m);
+      if (r === -1) {
+        match.w = null;
+        match.status = "ready";
+        delete match.pcs;
+      } else {
+        applyUnwin(b, r, m);
+      }
     } else {
       if (!match.slots[slotIdx]?.pid) return;
-      applyWin(b, r, m, slotIdx);
+      if (r === -1) {
+        match.w = slotIdx;
+        match.status = "done";
+        delete match.pcs;
+      } else {
+        applyWin(b, r, m, slotIdx);
+      }
     }
   });
 }
@@ -265,30 +306,39 @@ export async function setWinner(tid: string, r: number, m: number, slotIdx: numb
 export async function disqualify(tid: string, r: number, m: number, slotIdx: number) {
   await mutateBracket(tid, (b) => {
     const S = b.s ?? 2;
-    const match = b.rounds[r]?.[m];
+    const match = getMatch(b, r, m);
     const slot = match?.slots[slotIdx];
     if (!match || !slot || !slot.pid) return;
     if (match.status === "done" && match.w === slotIdx) {
-      // descalificar al ganador: revertir el resultado
-      applyUnwin(b, r, m);
+      if (r === -1) {
+        match.w = null;
+        match.status = "ready";
+        delete match.pcs;
+      } else {
+        applyUnwin(b, r, m);
+      }
     }
     slot.st = "dq";
     slot.score = 0;
     if (S === 2) {
-      // 1v1..4v4: el otro lado gana automáticamente
       const other = match.slots[1 - slotIdx];
       if (other?.pid) {
-        applyWin(b, r, m, 1 - slotIdx);
+        if (r === -1) {
+          match.w = 1 - slotIdx;
+          match.status = "done";
+          delete match.pcs;
+        } else {
+          applyWin(b, r, m, 1 - slotIdx);
+        }
       }
     }
-    // FFA (S > 2): el match continúa entre el resto — el admin marca
-    // al ganador cuando termine; nadie avanza automáticamente.
   });
 }
 
 export async function setSlotOk(tid: string, r: number, m: number, slotIdx: number) {
   await mutateBracket(tid, (b) => {
-    const slot = b.rounds[r]?.[m]?.slots[slotIdx];
+    const match = getMatch(b, r, m);
+    const slot = match?.slots[slotIdx];
     if (slot && slot.pid) slot.st = "ok";
   });
 }
@@ -309,7 +359,7 @@ export interface BankPick {
       por el primer integrante). Los matches terminados no se tocan. */
 export async function replaceFromBank(tid: string, r: number, m: number, slotIdx: number, pick: BankPick, modality: Modality) {
   await mutateBracket(tid, (b) => {
-    const match = b.rounds[r]?.[m];
+    const match = getMatch(b, r, m);
     const slot = match?.slots[slotIdx];
     if (!match || !slot || !slot.pid) return;
     if (match.status === "done") return;
@@ -341,18 +391,15 @@ export async function replaceFromBank(tid: string, r: number, m: number, slotIdx
     PCs quedan libres para el siguiente match. */
 export async function setMatchLive(tid: string, r: number, m: number, on: boolean, modality: Modality) {
   await mutateBracket(tid, (b) => {
-    const match = b.rounds[r]?.[m];
+    const match = getMatch(b, r, m);
     if (!match || match.status === "done") return;
     if (!matchPlayable(match)) return;
     if (on) {
       if (!match.pcs?.length) {
         const used = new Set<string>();
-        for (const round of b.rounds) {
-          for (const x of round) {
-            if (x.id !== match.id && x.status === "live" && x.pcs?.length) {
-              used.add(x.pcs.join("|"));
-            }
-          }
+        // contar matches live en rondas + thirdPlace
+        for (const x of allLiveMatches(b)) {
+          if (x.id !== match.id) used.add(x.pcs!.join("|"));
         }
         const free = firstFreeGroup(modality, used);
         if (!free) {
@@ -372,7 +419,16 @@ export async function setMatchLive(tid: string, r: number, m: number, on: boolea
 
 export async function resetMatchScores(tid: string, r: number, m: number) {
   await mutateBracket(tid, (b) => {
-    resetMatch(b, r, m);
+    if (r === -1) {
+      // reset del thirdPlace match
+      if (!b.thirdPlace) return;
+      b.thirdPlace.w = null;
+      b.thirdPlace.status = "ready";
+      delete b.thirdPlace.pcs;
+      b.thirdPlace.slots.forEach((s) => { s.score = 0; });
+    } else {
+      resetMatch(b, r, m);
+    }
   });
 }
 

@@ -105,6 +105,14 @@ export function computeBank(bracket: Bracket | null, players: Player[]): BankInf
   // Un eliminado que ya cubrió un no-show en una ronda posterior
   // sale del banco (sus pids aparecen en slots de rondas > last).
   const later = pidsInRounds(bracket, last + 1);
+  // incluir también los pids del match de 3er lugar (para no duplicar)
+  const tpPids = new Set<string>();
+  if (bracket.thirdPlace) {
+    for (const s of bracket.thirdPlace.slots) {
+      if (s.pid) tpPids.add(s.pid);
+      for (const mm of s.members) if (mm.pid) tpPids.add(mm.pid);
+    }
+  }
   const byId = new Map(players.map((p) => [p.id, p]));
   const entries: BankEntry[] = [];
   const round = bracket.rounds[last];
@@ -118,6 +126,8 @@ export function computeBank(bracket: Bracket | null, players: Player[]): BankInf
         ? slot.members
         : [{ pid: slot.pid as string, nick: slot.label }];
       if (members.some((mm) => later.has(mm.pid))) return; // ya está jugando
+      // si el participante ya está en el match de 3er lugar, no duplicarlo aquí
+      if (members.some((mm) => tpPids.has(mm.pid))) return;
       const first = byId.get(members[0]?.pid ?? "");
       entries.push({
         key: `r${last}m${m}s${i}`,
@@ -133,6 +143,35 @@ export function computeBank(bracket: Bracket | null, players: Player[]): BankInf
       });
     });
   }
+
+  // añadir el perdedor del match de 3er lugar al banco
+  // (el ganador tiene asegurado el 3er lugar, pero también está
+  // disponible para sustituir a un finalista que no se presente)
+  if (bracket.thirdPlace && bracket.thirdPlace.w !== null && bracket.thirdPlace.status === "done") {
+    const tp = bracket.thirdPlace;
+    tp.slots.forEach((slot, i) => {
+      if (!slot.pid || i === tp.w) return; // skip winner (tiene 3er lugar)
+      // skip si ya está jugando en una ronda posterior
+      if (later.has(slot.pid)) return;
+      const members: MatchMember[] = slot.members.length
+        ? slot.members
+        : [{ pid: slot.pid as string, nick: slot.label }];
+      if (members.some((mm) => later.has(mm.pid))) return;
+      const first = byId.get(members[0]?.pid ?? "");
+      entries.push({
+        key: `tp_loser`,
+        label: slot.label || members[0]?.nick || "—",
+        detail: members.length > 1
+          ? members.map((mm) => mm.nick).join(" · ")
+          : first?.name ?? "",
+        members: members.map((mm) => ({ pid: mm.pid, nick: mm.nick, dq: !!mm.dq, sub: !!mm.sub })),
+        origin: "round",
+        fromRound: last,
+        dq: slot.st === "dq",
+      });
+    });
+  }
+
   return {
     entries,
     fromRound: last,
