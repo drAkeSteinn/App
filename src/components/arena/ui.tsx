@@ -75,6 +75,7 @@ export function IconBtn({
   danger,
   active,
   disabled,
+  small,
 }: {
   children: React.ReactNode;
   onClick?: () => void;
@@ -82,6 +83,7 @@ export function IconBtn({
   danger?: boolean;
   active?: boolean;
   disabled?: boolean;
+  small?: boolean;
 }) {
   return (
     <button
@@ -90,7 +92,7 @@ export function IconBtn({
       aria-label={title}
       onClick={onClick}
       disabled={disabled}
-      className={`btn-press p-2 inline-flex items-center justify-center border transition-colors ${
+      className={`btn-press ${small ? "p-1.5" : "p-2"} inline-flex items-center justify-center border transition-colors ${
         danger
           ? "border-[#e8102e]/40 text-[#ff2440] hover:bg-[#e8102e] hover:text-white"
           : active

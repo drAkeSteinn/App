@@ -6,6 +6,8 @@ import { Emblem } from "@/components/arena/ui";
 import { MainApp } from "@/components/arena/MainApp";
 import { SpectatorView } from "@/components/arena/SpectatorView";
 import { ObsOverlay } from "@/components/arena/ObsOverlay";
+import { ContestViewer } from "@/components/arena/ContestViewer";
+import { useActiveTournament } from "@/lib/activeTournament";
 
 function Splash() {
   return (
@@ -18,6 +20,14 @@ function Splash() {
   );
 }
 
+/** Visor: si hay un concurso activo → ContestViewer; si no, SpectatorView
+    (torneo). La URL es siempre la misma (/?v=show). */
+function ViewerRouter({ tid }: { tid: string | null }) {
+  const { contestId } = useActiveTournament();
+  if (contestId && !tid) return <ContestViewer />;
+  return <SpectatorView tid={tid} />;
+}
+
 function Views() {
   const sp = useSearchParams();
   // Fuente de navegador para OBS Studio (fondo transparente, cards fijas)
@@ -25,7 +35,7 @@ function Views() {
     return <ObsOverlay tid={sp.get("t")} />;
   }
   if (sp.get("v") === "show") {
-    return <SpectatorView tid={sp.get("t")} />;
+    return <ViewerRouter tid={sp.get("t")} />;
   }
   return <MainApp />;
 }

@@ -7,7 +7,6 @@ import {
   Expand,
   LayoutPanelLeft,
   Loader2,
-  MonitorPlay,
   Radio,
   Timer,
   Trophy,
@@ -21,16 +20,21 @@ import { MODALITY_LABEL, playersCapacity } from "@/lib/types";
 import { computeSchedule, matchTag, totalMatches } from "@/lib/bracket";
 import { computeBank } from "@/lib/bank";
 import { pcsForSide } from "@/lib/pcs";
+import { useArenaState } from "@/lib/arenaState";
+import { useActiveTournament } from "@/lib/activeTournament";
 import { useBracket, usePlayers, useTournaments } from "@/lib/hooks";
+import { useSoundPlayer, type SoundEvent } from "@/lib/sounds";
 import { BracketTree, FitStage } from "@/components/bracket/BracketTree";
-import { Backdrop, Btn, EmptyState, ModalityChip, StatusChip } from "./ui";
+import { Backdrop, ModalityChip, StatusChip } from "./ui";
 import { Countdown } from "./Countdown";
 import { MixOverlay } from "./MixOverlay";
 import { Podium } from "./Podium";
 import { MatchRail, hasRailMatches } from "./MatchRail";
 import { ScheduleOverlay } from "./ScheduleOverlay";
 import { RegistrationBroadcast } from "./RegistrationBroadcast";
+import { BankView } from "./BankView";
 import { MatchSpotlight, type SpotlightData } from "./MatchSpotlight";
+import { SubEnterOverlay, type SubEnterData } from "./SubEnterOverlay";
 
 /* ============================================================
    VISOR DE ESPECTADORES — transmisión del torneo
@@ -40,7 +44,7 @@ import { MatchSpotlight, type SpotlightData } from "./MatchSpotlight";
    según la fase del torneo (registro ↔ brackets).
    ============================================================ */
 
-export type ViewerMode = "brackets" | "reg";
+export type ViewerMode = "brackets" | "reg" | "bank";
 
 /* Detecta el primer evento "dramático" entre dos versiones del bracket:
    match que pasa a DONE (ganador marcado o cambiado) o a LIVE (en juego).
@@ -113,14 +117,12 @@ function ShowHeader({
   t,
   mode,
   onMode,
-  onSchedule,
-  showScheduleBtn,
+  schedIndicator,
 }: {
   t: Tournament;
   mode: ViewerMode;
   onMode: (m: ViewerMode) => void;
-  onSchedule: () => void;
-  showScheduleBtn: boolean;
+  schedIndicator?: boolean;
 }) {
   const clock = useClock();
   return (
@@ -182,16 +184,14 @@ function ShowHeader({
           </button>
         </div>
 
-        {showScheduleBtn ? (
-          <button
-            type="button"
-            onClick={onSchedule}
-            title="Cartelera de horarios estimados"
-            aria-label="Abrir cartelera de horarios"
-            className="btn-press p-2 border border-white/12 text-[#8e919c] hover:text-white hover:border-[#e8102e]/60"
+        {schedIndicator ? (
+          <span
+            className="chip clip-tag bg-[#ffb830]/14 text-[#ffb830] border border-[#ffb830]/40 text-[8px] flex items-center gap-1.5"
+            title="Cartelera activa — el admin la controla desde Torneo en vivo"
           >
-            <CalendarClock size={15} />
-          </button>
+            <CalendarClock size={11} />
+            <span className="hidden sm:inline">Cartelera</span>
+          </span>
         ) : null}
 
         <span className="hidden sm:block font-display italic text-[15px] text-[#8e919c] tabular-nums">
@@ -319,23 +319,36 @@ function Pregame({ t, players }: { t: Tournament; players: Player[] }) {
 /* ---------- Cuerpo principal ---------- */
 export function SpectatorView({ tid }: { tid: string | null }) {
   const { data: tournaments, loading, error } = useTournaments();
+  /* El visor siempre es la misma URL (/?v=show). Si no viene ?t=, se
+     resuelve el torneo ACTIVO desde Firestore (arena/active). Solo puede
+     haber uno activo a la vez — lo controla el admin desde "Torneo en vivo". */
+  const active = useActiveTournament();
+  const effectiveTid = tid ?? active.tid;
   const tournament: Tournament | null = useMemo(
-    () => tournaments.find((t) => t.id === tid) ?? null,
-    [tournaments, tid]
+    () => tournaments.find((t) => t.id === effectiveTid) ?? null,
+    [tournaments, effectiveTid]
   );
-  const { data: players } = usePlayers(tournament ? tid : null);
-  const { data: bracket } = useBracket(tournament ? tid : null);
+  const { data: players } = usePlayers(tournament ? effectiveTid : null);
+  const { data: bracket } = useBracket(tournament ? effectiveTid : null);
+  const arenaState = useArenaState(tournament ? effectiveTid : null);
 
   const status = tournament?.status ?? "open";
   const [override, setOverride] = useState<{ status: Tournament["status"]; mode: ViewerMode } | null>(null);
-  const [schedOpen, setSchedOpen] = useState(false);
   const [revealCount, setRevealCount] = useState(0);
   const [showPodium, setShowPodium] = useState(true);
   const [spotlight, setSpotlight] = useState<SpotlightData | null>(null);
+  const [subEnter, setSubEnter] = useState<SubEnterData | null>(null);
   const prevBracketRef = useRef<{ tid: string | null; bracket: Bracket } | null>(null);
+  const prevBankPickRef = useRef<{ id: number; slotPid: string | null } | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const ivRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const toRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /* cartelera de horarios: la controla el admin desde "Torneo en vivo".
+     El visor solo refleja el estado (pantalla proyectada, sin interacción). */
+  const schedOpen = arenaState?.schedOpen ?? false;
+  /* reproductor de sonidos (carga la config global + reproduce) */
+  const playSound = useSoundPlayer();
 
   /* AUTO-MODO: el modo se deriva del status del torneo (cada fase del admin
      se refleja sola en el visor). El toggle manual gana hasta que el status
@@ -345,7 +358,14 @@ export function SpectatorView({ tid }: { tid: string | null }) {
      se ve en grande; si cancela la cuenta regresiva regresa al modo registro. */
   const inRegisterPhase = status === "open" || status === "closed";
   const autoMode: ViewerMode = inRegisterPhase ? (tournament?.startAt ? "brackets" : "reg") : "brackets";
-  const mode: ViewerMode = override && override.status === status ? override.mode : autoMode;
+  const baseMode: ViewerMode = override && override.status === status ? override.mode : autoMode;
+  /* El admin abrió el selector de banco → el visor pasa a la vista de Banco
+     para que el caster vea las reservas. Es prioritario y transitorio:
+     en cuanto se confirma/cancela (bankPick = null) regresa al modo base. */
+  const arenaBankPick = arenaState?.bankPick ?? null;
+  const forceBank =
+    !!arenaBankPick && (status === "live" || status === "mixing" || status === "finished");
+  const mode: ViewerMode = forceBank ? "bank" : baseMode;
 
   /* sincroniza el modo en la URL para compartir la vista correcta */
   useEffect(() => {
@@ -407,11 +427,11 @@ export function SpectatorView({ tid }: { tid: string | null }) {
      que pasa a DONE (o cambia de ganador) o a LIVE, lanza el overlay. ----- */
   useEffect(() => {
     const prev = prevBracketRef.current;
-    prevBracketRef.current = tid && bracket ? { tid, bracket } : null;
-    if (!bracket || !prev || prev.tid !== tid || status !== "live") return;
+    prevBracketRef.current = effectiveTid && bracket ? { tid: effectiveTid, bracket } : null;
+    if (!bracket || !prev || prev.tid !== effectiveTid || status !== "live") return;
     const event = findSpotlightEvent(bracket, prev.bracket, tournament?.winsNeeded ?? 1, tournament?.modality ?? 1);
     if (event) setSpotlight(event);
-  }, [bracket, status, tid, tournament]);
+  }, [bracket, status, effectiveTid, tournament]);
 
   /* el corte se va solo tras 10 segundos (para ver bien quién ganó y qué
      match está en juego) y regresa a los brackets */
@@ -447,6 +467,83 @@ export function SpectatorView({ tid }: { tid: string | null }) {
       anim.cancel();
     };
   }, [spotlight]);
+
+  /* ref siempre fresca del bracket (para leer el estado más reciente dentro
+     de un setTimeout sin closure stalado) */
+  const bracketRef = useRef<Bracket | null>(null);
+  useEffect(() => {
+    bracketRef.current = bracket;
+  }, [bracket]);
+
+  /* ----- SUB-ENTER: cuando el admin confirma un reemplazo desde el banco,
+     el visor muestra la animación del reserva que entra al match.
+     Detección: al abrir el bankPick se snapshot el pid del slot; al cerrar
+     (bankPick → null) se compara. Si el pid cambió → confirmó (animación);
+     si es el mismo → canceló (nada). Un grace de 500ms deja llegar la
+     actualización del bracket por si el orden de onSnapshot se invierte. ----- */
+  useEffect(() => {
+    const pick = arenaBankPick;
+    if (pick) {
+      if (!prevBankPickRef.current || prevBankPickRef.current.id !== pick.id) {
+        const slotPid =
+          bracketRef.current?.rounds[pick.r]?.[pick.m]?.slots[pick.slotIdx]?.pid ?? null;
+        prevBankPickRef.current = {
+          r: pick.r,
+          m: pick.m,
+          slotIdx: pick.slotIdx,
+          id: pick.id,
+          slotPid,
+        };
+      }
+      return;
+    }
+    const prev = prevBankPickRef.current;
+    if (!prev) return;
+    prevBankPickRef.current = null;
+    const captured = prev;
+    const t = setTimeout(() => {
+      const b = bracketRef.current;
+      const curSlot = b?.rounds[captured.r]?.[captured.m]?.slots[captured.slotIdx];
+      const curPid = curSlot?.pid ?? null;
+      if (curPid && curPid !== captured.slotPid) {
+        const nick = curSlot?.label || curSlot?.members[0]?.nick || "—";
+        const isFinal = b ? captured.r === b.rounds.length - 1 : false;
+        const tag = isFinal ? "GRAN FINAL" : b ? matchTag(b, captured.r, captured.m) : "MATCH";
+        setSubEnter({ id: `${captured.id}-${Date.now()}`, nick, matchTag: tag });
+      }
+    }, 500);
+    return () => clearTimeout(t);
+  }, [arenaBankPick]);
+
+  /* la animación de entrada se descarta sola tras 4.5 s (o al hacer click) */
+  useEffect(() => {
+    if (!subEnter) return;
+    const t = setTimeout(() => setSubEnter(null), 4500);
+    return () => clearTimeout(t);
+  }, [subEnter]);
+
+  /* ----- SONIDOS: el admin dispara una acción → el visor la reproduce
+     para el público (arenaState.sound). mixPlace es interno del visor:
+     suena cada vez que un jugador se fija en el bracket durante el mix. ----- */
+  const lastSoundId = useRef<number>(0);
+  useEffect(() => {
+    const sig = arenaState?.sound;
+    if (!sig || sig.id === lastSoundId.current) return;
+    lastSoundId.current = sig.id;
+    playSound(sig.event as SoundEvent);
+  }, [arenaState?.sound, playSound]);
+
+  const prevReveal = useRef(0);
+  useEffect(() => {
+    if (status !== "mixing" || mode !== "brackets") {
+      prevReveal.current = revealCount;
+      return;
+    }
+    if (revealCount > prevReveal.current) {
+      playSound("mixPlace");
+    }
+    prevReveal.current = revealCount;
+  }, [revealCount, status, mode, playSound]);
 
   const schedule = useMemo(
     () => (tournament && bracket ? computeSchedule(bracket, tournament.startAt, tournament.matchMins) : new Map<string, number>()),
@@ -505,71 +602,42 @@ export function SpectatorView({ tid }: { tid: string | null }) {
     return items;
   }, [bracket, tournament, schedule, players]);
 
-  /* ----- selector de transmisión ----- */
-  if (!tid || (!loading && !tournament)) {
+  /* ----- pantalla de espera: no hay torneo activo para transmitir ----- */
+  if (!effectiveTid || (!loading && !tournament)) {
     return (
-      <div className="fixed inset-0 overflow-hidden" style={{ background: "#070708" }}>
+      <div className="fixed inset-0 overflow-hidden flex items-center justify-center" style={{ background: "#070708" }}>
         <Backdrop variant="show" />
         <ShowBackground dim={0.14} />
-        <div className="relative z-10 h-full overflow-y-auto">
-          <div className="max-w-4xl mx-auto px-6 py-16">
-            <div className="text-center mb-10">
-              <span className="text-[11px] font-extrabold tracking-[0.5em] uppercase text-[#ff8095]">Visor de espectadores</span>
-              <h1 className="font-display italic text-[38px] sm:text-[52px] uppercase leading-none mt-2">
-                <span className="text-silver-grad">Transmisiones</span> <span className="text-red-grad">en vivo</span>
-              </h1>
+        <div className="relative z-10 max-w-xl mx-auto px-6 text-center">
+          {loading ? (
+            <div className="flex justify-center py-16 text-[#8e919c]">
+              <Loader2 size={26} className="animate-spin" />
             </div>
-            {loading ? (
-              <div className="flex justify-center py-16 text-[#8e919c]">
-                <Loader2 size={26} className="animate-spin" />
+          ) : error ? (
+            <div className="panel clip-card p-4 text-[12px] font-bold text-[#ff8095]">Error de Firebase: {error}</div>
+          ) : (
+            <>
+              <div className="flex justify-center mb-6">
+                <div className="w-16 h-16 clip-card border border-white/15 bg-black/40 flex items-center justify-center">
+                  <Radio size={28} className="text-[#e8102e]" />
+                </div>
               </div>
-            ) : error ? (
-              <div className="panel clip-card p-4 text-[12px] font-bold text-[#ff8095]">Error de Firebase: {error}</div>
-            ) : tournaments.length === 0 ? (
-              <div className="panel clip-card">
-                <EmptyState
-                  icon={<MonitorPlay size={26} />}
-                  title="Sin torneos todavía"
-                  message="Cuando el organizador cree un torneo aparecerá aquí para que lo veas en pantalla grande."
-                />
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {[...tournaments]
-                  .sort((a, b) => {
-                    const order = { live: 0, mixing: 1, closed: 2, open: 3, finished: 4 } as const;
-                    return order[a.status] - order[b.status];
-                  })
-                  .map((t) => (
-                    <a
-                      key={t.id}
-                      href={`/?v=show&t=${t.id}`}
-                      className="panel clip-card hover-lift p-5 flex items-center gap-4"
-                    >
-                      <div className="w-14 h-14 shrink-0 clip-card-sm border border-white/12 bg-black/40 flex items-center justify-center overflow-hidden">
-                        {t.logo ? (
-                           
-                          <img src={t.logo} alt={`Logo ${t.name}`} className="w-full h-full object-contain" />
-                        ) : (
-                          <Trophy size={20} className="text-[#e8102e]" />
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="font-display italic text-[17px] uppercase truncate">{t.name}</div>
-                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                          <StatusChip status={t.status} />
-                          <ModalityChip modality={t.modality} />
-                        </div>
-                      </div>
-                      <Radio size={18} className="text-[#e8102e] shrink-0" />
-                    </a>
-                  ))}
-              </div>
-            )}
-            <p className="text-center text-[10px] font-bold tracking-[0.24em] uppercase text-[#6b6e78] mt-10">
-              Abre esta vista en otra pantalla para transmitir el torneo
-            </p>
-          </div>
+              <span className="text-[11px] font-extrabold tracking-[0.5em] uppercase text-[#ff8095]">Visor de espectadores</span>
+              <h1 className="font-display italic text-[34px] sm:text-[44px] uppercase leading-none mt-3">
+                <span className="text-silver-grad">Esperando</span> <span className="text-red-grad">transmisión</span>
+              </h1>
+              <p className="text-[12px] font-bold tracking-[0.16em] uppercase text-[#8e919c] mt-6 leading-relaxed">
+                No hay un torneo abierto para transmitir.
+                <br />
+                El administrador debe abrir un torneo desde
+                <br />
+                <span className="text-white">Torneo en vivo → Abrir torneo</span>.
+              </p>
+              <p className="text-[9px] font-bold tracking-[0.3em] uppercase text-[#6b6e78] mt-8">
+                Esta pantalla se actualiza sola cuando se abra un torneo
+              </p>
+            </>
+          )}
         </div>
       </div>
     );
@@ -599,8 +667,7 @@ export function SpectatorView({ tid }: { tid: string | null }) {
         t={tournament}
         mode={mode}
         onMode={changeMode}
-        onSchedule={() => setSchedOpen(true)}
-        showScheduleBtn={!!bracket && mode === "brackets"}
+        schedIndicator={schedOpen}
       />
 
       {/* spotlight de matches en juego */}
@@ -633,6 +700,16 @@ export function SpectatorView({ tid }: { tid: string | null }) {
               t={tournament}
               players={players}
               onCountdownClick={() => changeMode("brackets")}
+            />
+          ) : mode === "bank" ? (
+            /* MODO BANCO — el admin abrió el selector de reservas: el visor
+               muestra las disponibles para que el caster llame a los jugadores */
+            <BankView
+              key="bank"
+              t={tournament}
+              bracket={bracket}
+              players={players}
+              matchTag={arenaBankPick?.tag ?? null}
             />
           ) : (
             <>
@@ -716,6 +793,11 @@ export function SpectatorView({ tid }: { tid: string | null }) {
       {/* corte dramático: ganador marcado / match en juego — 5 s y regresa a brackets */}
       <AnimatePresence>
         {spotlight ? <MatchSpotlight key={spotlight.id} data={spotlight} onDone={() => setSpotlight(null)} /> : null}
+      </AnimatePresence>
+
+      {/* animación de reserva entrando al bracket desde el banco */}
+      <AnimatePresence>
+        {subEnter ? <SubEnterOverlay key={subEnter.id} data={subEnter} onDone={() => setSubEnter(null)} /> : null}
       </AnimatePresence>
 
       {/* banner de espera durante mixing */}

@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
+  CalendarClock,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -15,6 +16,7 @@ import {
   Maximize2,
   Minus,
   Monitor,
+  MonitorPlay,
   PanelRightClose,
   PanelRightOpen,
   Plus,
@@ -67,6 +69,11 @@ import {
   setWinner,
   setStatus,
 } from "@/lib/actions";
+import { closeBankPick, emitSound, openBankPick, setSchedOpen, useArenaState } from "@/lib/arenaState";
+import { useSoundPlayer, type SoundEvent } from "@/lib/sounds";
+import { closeTournament, getActiveInfo, openTournament, useActiveTournament } from "@/lib/activeTournament";
+import { useTournaments } from "@/lib/hooks";
+import { useContests } from "@/lib/contestHooks";
 import { BracketTree, FitStage } from "@/components/bracket/BracketTree";
 import { maxSimultaneous, pcForPlayer, pcOccupancy, plannedPcs, pcsLabel } from "@/lib/pcs";
 import { RoundColumns } from "./RoundColumns";
@@ -101,10 +108,26 @@ export function LiveAdminView({
   const [panelOpen, setPanelOpen] = useState(true);
   const [zoom, setZoom] = useState<number | null>(null); // null = auto-fit
   const [startMins, setStartMins] = useState(1);
+  const [forceModal, setForceModal] = useState<{ blockingName: string } | null>(null);
+  const { data: allTournaments } = useTournaments();
+  const { data: allContests } = useContests();
 
   /* banco efectivo: reservas del registro antes de la primera eliminatoria;
      después, los eliminados de la última ronda completada (banco rotativo) */
   const bankInfo = useMemo(() => computeBank(bracket, players), [bracket, players]);
+  const arenaState = useArenaState(tournament?.id ?? null);
+  const playSound = useSoundPlayer();
+  const schedOpen = arenaState?.schedOpen ?? false;
+  /** Dispara un sonido en el panel local y lo emite al visor. */
+  const fireSound = (event: SoundEvent) => {
+    playSound(event);
+    if (tournament) emitSound(tournament.id, event).catch(() => {});
+  };
+  /* Torneo activo para transmisión (visor + OBS). Solo uno a la vez. */
+  const active = useActiveTournament();
+  const isActive = !!tournament && active.tid === tournament.id;
+  const anotherActive = !!active.tid && active.tid !== tournament?.id;
+  const activeTournamentName = active.tournament?.name ?? null;
   const participants = useMemo(
     () => (tournament ? groupParticipants(players, tournament.modality) : []),
     [players, tournament]
@@ -211,12 +234,70 @@ export function LiveAdminView({
                   INICIA ≈ {fmtTime(tournament.startAt)}
                 </span>
               ) : null}
+              {isActive ? (
+                <span className="chip clip-tag bg-[#e8102e] text-white text-[9px] blink">
+                  <span className="w-1.5 h-1.5 bg-white rounded-full" aria-hidden />
+                  EN TRANSMISIÓN
+                </span>
+              ) : null}
             </div>
           </div>
         </div>
-        <span className="text-[9px] font-extrabold uppercase tracking-[0.18em] text-[#6b6e78] hidden md:inline">
-          Cada fase se refleja automáticamente en el visor
-        </span>
+        {/* control de transmisión: Abrir / Cerrar torneo para el visor + OBS */}
+        <div className="flex items-center gap-2 shrink-0">
+          {isActive ? (
+            <Btn
+              small
+              variant="dark"
+              onClick={() =>
+                guard(async () => {
+                  await closeTournament();
+                  toast.success("Torneo cerrado — el visor y las cards de OBS dejan de transmitir");
+                })
+              }
+              title="Cerrar torneo: el visor y las cards de OBS dejan de mostrar este torneo"
+            >
+              <Lock size={12} />
+              Cerrar torneo
+            </Btn>
+          ) : (
+            <Btn
+              small
+              variant={anotherActive ? "dark" : "red"}
+              title={
+                anotherActive
+                  ? `Ya hay otra transmisión activa: ${activeTournamentName}. Clic para forzar.`
+                  : "En vivo: el visor y las cards de OBS mostrarán este torneo"
+              }
+              onClick={() =>
+                guard(async () => {
+                  if (!tournament) return;
+                  /* verificar si hay otra transmisión activa */
+                  const info = await getActiveInfo();
+                  const hasOther = (info.tid && info.tid !== tournament.id) || info.contestId;
+                  if (hasOther) {
+                    /* determinar el nombre del bloqueante */
+                    let blockingName = "otra transmisión";
+                    if (info.tid) {
+                      const t = allTournaments.find((x) => x.id === info.tid);
+                      blockingName = t?.name ?? "un torneo";
+                    } else if (info.contestId) {
+                      const c = allContests.find((x) => x.id === info.contestId);
+                      blockingName = c?.name ?? "un concurso";
+                    }
+                    setForceModal({ blockingName });
+                    return;
+                  }
+                  await openTournament(tournament.id, tournament.name);
+                  toast.success("Torneo en vivo — el visor y las cards de OBS lo muestran");
+                })
+              }
+            >
+              <Radio size={12} />
+              {anotherActive ? `Ocupado: ${activeTournamentName}` : "En vivo"}
+            </Btn>
+          )}
+        </div>
       </div>
 
       {/* ============ FLUJO POR FASES ============ */}
@@ -237,6 +318,7 @@ export function LiveAdminView({
           guard(async () => {
             await launchMix(tournament.id, players, tournament);
             setSel(null);
+            fireSound("mixLaunch");
             toast.success("Mix match lanzado — el visor reproduce la animación");
           })
         }
@@ -261,6 +343,7 @@ export function LiveAdminView({
                   onClick={() =>
                     guard(async () => {
                       await launchMix(tournament.id, players, tournament);
+                      fireSound("mixLaunch");
                       toast.success("Mix match lanzado");
                     })
                   }
@@ -371,6 +454,36 @@ export function LiveAdminView({
                 </div>
               ) : null}
 
+              {/* toggle cartelera en el visor (proyectado) */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (!tournament) return;
+                  setSchedOpen(tournament.id, !schedOpen).catch(() => {});
+                }}
+                title={schedOpen ? "Ocultar cartelera en el visor" : "Mostrar cartelera de horarios en el visor"}
+                aria-pressed={schedOpen}
+                className={`btn-press clip-tag px-2.5 py-2 text-[10px] font-extrabold uppercase tracking-[0.1em] flex items-center gap-1.5 border transition-colors ${
+                  schedOpen
+                    ? "border-[#ffb830]/60 bg-[#ffb830]/12 text-[#ffb830]"
+                    : "border-white/12 text-[#8e919c] hover:text-white hover:border-[#ffb830]/50"
+                }`}
+              >
+                <CalendarClock size={13} />
+                <span className="hidden md:inline">Cartelera</span>
+              </button>
+
+              {/* editar posición de cards de OBS (abre el editor draggable) */}
+              <button
+                type="button"
+                onClick={() => window.open("/?obs=1&edit=1", "_blank", "noopener")}
+                title="Arrastrar las cards de OBS (PC1-PC4) a posiciones personalizadas — se guarda para todos los torneos"
+                className="btn-press clip-tag px-2.5 py-2 text-[10px] font-extrabold uppercase tracking-[0.1em] flex items-center gap-1.5 border border-white/12 text-[#8e919c] hover:text-white hover:border-[#e8102e]/60 transition-colors"
+              >
+                <MonitorPlay size={13} />
+                <span className="hidden md:inline">Editar cards OBS</span>
+              </button>
+
               {/* toggle panel lateral */}
               <button
                 type="button"
@@ -427,6 +540,7 @@ export function LiveAdminView({
                     onPickWinner={(r, m, slotIdx) =>
                       guard(async () => {
                         await setWinner(tournament.id, r, m, slotIdx);
+                        fireSound("winner");
                         setSel({ r, m });
                         toast.success(`${bracket.rounds[r][m].slots[slotIdx].label} avanza`);
                       })
@@ -457,6 +571,7 @@ export function LiveAdminView({
                   setPickBank={setPickBank}
                   busy={busy}
                   stepMatch={stepMatch}
+                  onSound={fireSound}
                 />
               </div>
             </aside>
@@ -477,6 +592,7 @@ export function LiveAdminView({
               setPickBank={setPickBank}
               busy={busy}
               stepMatch={stepMatch}
+              onSound={fireSound}
             />
           </div>
 
@@ -496,7 +612,14 @@ export function LiveAdminView({
       )}
 
       {/* ============ modal banco ============ */}
-      <Modal open={!!pickBank} onClose={() => setPickBank(null)} title="Reemplazar desde el banco">
+      <Modal
+        open={!!pickBank}
+        onClose={() => {
+          setPickBank(null);
+          if (tournament) closeBankPick(tournament.id).catch(() => {});
+        }}
+        title="Reemplazar desde el banco"
+      >
         <p className="text-[11px] font-bold text-[#8e919c] uppercase tracking-wider mb-1">
           Selecciona la reserva que entrará al match
         </p>
@@ -528,6 +651,10 @@ export function LiveAdminView({
                       { label: e.label, members: e.members, full: e.origin === "round" },
                       tournament.modality
                     );
+                    // libera el visor (cierra la vista de banco → el bracket
+                    // actualizado dispara la animación de entrada del reserva)
+                    await closeBankPick(tournament.id);
+                    fireSound("bankSwap");
                     toast.success(`${e.label} entra al match`);
                     setPickBank(null);
                   });
@@ -574,6 +701,7 @@ export function LiveAdminView({
           guard(async () => {
             await launchMix(tournament.id, players, tournament);
             setSel(null);
+            fireSound("mixLaunch");
             toast.success("Mix lanzado — brackets nuevos y limpios");
           })
         }
@@ -588,6 +716,7 @@ export function LiveAdminView({
           tournament &&
           guard(async () => {
             await setStatus(tournament.id, "finished");
+            fireSound("tournamentFinish");
             toast.success("Torneo finalizado — podio activado");
           })
         }
@@ -667,6 +796,40 @@ export function LiveAdminView({
           })
         }
       />
+
+      {/* modal de forzar transmisión */}
+      <Modal open={!!forceModal} onClose={() => setForceModal(null)} title="Ya hay una transmisión activa">
+        {forceModal ? (
+          <div className="space-y-4">
+            <p className="text-[12px] font-bold text-[#c9cbd3]">
+              Actualmente se está transmitiendo:{" "}
+              <span className="text-white font-extrabold">{forceModal.blockingName}</span>
+            </p>
+            <p className="text-[11px] font-semibold text-[#8e919c]">
+              ¿Quieres forzar la transmisión de este torneo? El visor y las cards de OBS
+              cambiarán inmediatamente a este torneo, reemplazando la transmisión actual.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Btn variant="ghost" onClick={() => setForceModal(null)}>
+                Cancelar
+              </Btn>
+              <Btn
+                variant="red"
+                onClick={() =>
+                  guard(async () => {
+                    if (!tournament) return;
+                    await openTournament(tournament.id, tournament.name, true);
+                    setForceModal(null);
+                    toast.success("Transmisión forzada — el visor ahora muestra este torneo");
+                  })
+                }
+              >
+                Forzar transmisión
+              </Btn>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }
@@ -772,6 +935,7 @@ function MatchPanel({
   setPickBank,
   busy,
   stepMatch,
+  onSound,
 }: {
   tournament: Tournament;
   bracket: Bracket;
@@ -785,6 +949,7 @@ function MatchPanel({
   setPickBank: (v: { r: number; m: number; slotIdx: number } | null) => void;
   busy: boolean;
   stepMatch: (dir: 1 | -1) => void;
+  onSound: (event: SoundEvent) => void;
 }) {
   /* capacidad del escenario (4 PCs) + PCs del match seleccionado */
   const maxSim = maxSimultaneous(tournament.modality);
@@ -868,7 +1033,20 @@ function MatchPanel({
                 winsNeeded={tournament.winsNeeded}
                 pcs={planned.get(selMatch.id)}
                 bankCount={bankInfo.entries.length}
-                onPickBank={() => setPickBank({ r: sel.r, m: sel.m, slotIdx: i })}
+                onPickBank={() => {
+                  if (!tournament || !bracket || !sel) return;
+                  const tag = sel.r === bracket.rounds.length - 1 ? "GRAN FINAL" : matchTag(bracket, sel.r, sel.m);
+                  setPickBank({ r: sel.r, m: sel.m, slotIdx: i });
+                  // avisa al visor para mostrar la vista de banco (caster)
+                  openBankPick(tournament.id, {
+                    r: sel.r,
+                    m: sel.m,
+                    slotIdx: i,
+                    matchId: selMatch.id,
+                    tag,
+                  }).catch(() => {});
+                }}
+                onSound={onSound}
               />
             ))}
           </div>
@@ -892,6 +1070,7 @@ function MatchPanel({
                     const turningOn = selMatch.status !== "live";
                     await setMatchLive(tournament.id, sel.r, sel.m, turningOn, tournament.modality);
                     if (turningOn) {
+                      fireSound("matchLive");
                       toast.success(
                         `Match en juego — PCs asignadas (${maxSim} máximo simultáneo${maxSim > 1 ? "s" : ""})`
                       );
@@ -975,8 +1154,9 @@ function SlotRow(props: {
   winsNeeded: number;
   pcs?: string[];
   onPickBank: () => void;
+  onSound: (event: SoundEvent) => void;
 }) {
-  const { tid, bracket, r, m, slotIdx, bankCount, modality, winsNeeded, pcs, onPickBank } = props;
+  const { tid, bracket, r, m, slotIdx, bankCount, modality, winsNeeded, pcs, onPickBank, onSound } = props;
   const slot = bracket.rounds[r][m].slots[slotIdx];
   const match = bracket.rounds[r][m];
   const isWinner = match.status === "done" && match.w === slotIdx;
@@ -990,7 +1170,7 @@ function SlotRow(props: {
   }
 
   return (
-    <motion.div layout className={`panel-2 clip-card-sm p-3 ${slot.st === "dq" ? "border-[#e8102e]/60" : ""}`}>
+    <motion.div layout className={`panel-2 clip-card-sm p-3 ${slot.st === "dq" ? "border-[#e8102e]/60" : ""} ${slot.st === "rep" ? "border-[#ffb830]/40 bg-[#ffb830]/[0.04]" : ""}`}>
       <div className="flex items-center gap-2 mb-2">
         <span className="red-badge clip-badge px-2 py-1 min-w-[34px] text-center">
           <span className="font-display italic text-[14px]">{slot.score}</span>
@@ -1006,8 +1186,6 @@ function SlotRow(props: {
         {isWinner ? <Trophy size={14} className="text-[#ffb830] shrink-0" /> : null}
         {slot.st === "dq" ? (
           <span className="chip clip-tag bg-[#e8102e] text-white text-[8px] px-1.5 py-[2px]">DQ</span>
-        ) : slot.st === "rep" ? (
-          <span className="chip clip-tag bg-white/10 text-[#c9cbd3] border border-white/15 text-[8px] px-1.5 py-[2px]">SUB</span>
         ) : null}
       </div>
       {/* PC asignada a cada miembro del slot */}
@@ -1045,7 +1223,11 @@ function SlotRow(props: {
         <IconBtn
           title="Sumar victoria"
           disabled={match.status === "done"}
-          onClick={() => setScore(tid, r, m, slotIdx, 1, winsNeeded).catch((e) => toast.error(e.message))}
+          onClick={() => {
+            setScore(tid, r, m, slotIdx, 1, winsNeeded)
+              .then(() => onSound("scoreUp"))
+              .catch((e) => toast.error(e.message));
+          }}
         >
           <Plus size={13} />
         </IconBtn>
@@ -1053,7 +1235,11 @@ function SlotRow(props: {
           small
           variant={isWinner ? "gold" : "silver"}
           disabled={match.status === "done" || !match.slots.some((s, si) => si !== slotIdx && s.pid)}
-          onClick={() => setWinner(tid, r, m, slotIdx).catch((e) => toast.error(e.message))}
+          onClick={() => {
+            setWinner(tid, r, m, slotIdx)
+              .then(() => onSound("winner"))
+              .catch((e) => toast.error(e.message));
+          }}
         >
           <Check size={11} />
           Ganador

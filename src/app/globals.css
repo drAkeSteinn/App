@@ -359,17 +359,33 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 }
 
 /* ---------------- Animations ---------------- */
+/* livePulse optimizado: usa opacity en ::after en vez de animar box-shadow
+   (que causa repaint costoso en cada frame). El glow es un pseudo-elemento
+   fijo cuya opacidad varía — mucho más barato para el GPU. */
 @keyframes livePulse {
   0%,
   100% {
-    box-shadow: 0 0 0 1px var(--red-hot), 0 0 18px rgba(255, 36, 64, 0.45), inset 0 0 24px rgba(232, 16, 46, 0.12);
+    opacity: 0.55;
   }
   50% {
-    box-shadow: 0 0 0 1px var(--red-hot), 0 0 34px rgba(255, 36, 64, 0.85), inset 0 0 34px rgba(232, 16, 46, 0.25);
+    opacity: 1;
   }
 }
 .live-glow {
+  position: relative;
+  isolation: isolate;
+}
+.live-glow::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border: 2px solid var(--red-hot);
+  border-radius: inherit;
+  box-shadow: 0 0 22px rgba(255, 36, 64, 0.6), inset 0 0 20px rgba(232, 16, 46, 0.15);
+  pointer-events: none;
+  z-index: -1;
   animation: livePulse 1.6s ease-in-out infinite;
+  will-change: opacity;
 }
 
 @keyframes sheen {
@@ -405,6 +421,7 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 }
 .blink {
   animation: blinkDot 1.1s steps(2, start) infinite;
+  will-change: opacity;
 }
 
 @keyframes marquee {
@@ -526,6 +543,7 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 }
 .rolling {
   animation: rollBlur 0.16s linear infinite;
+  will-change: transform, filter;
 }
 
 /* ---------------- Bracket slot states ---------------- */
@@ -569,6 +587,12 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 .slot-live {
   outline: 2px solid var(--red-hot);
   animation: livePulse 1.6s ease-in-out infinite;
+}
+/* Sustituto del banco: tinte champagne/latón sutil (sin texto "SUB").
+   Diferencia visual clara frente al plate plateado, pero menos saturado
+   que el gold del ganador. Sólo color de fondo — sin etiquetas extra. */
+.slot-sub {
+  background: linear-gradient(180deg, #fbf2dc 0%, #ecd9af 42%, #cdb88a 84%, #e0c89c 100%) !important;
 }
 
 /* ---------------- Misc ---------------- */
@@ -791,6 +815,7 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 }
 .glitch-in {
   animation: glitchIn 0.55s linear 1 both;
+  will-change: transform, opacity;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -899,23 +924,26 @@ body.obs-mode::-webkit-scrollbar {
   filter: grayscale(0.55);
 }
 
-/* barra-card GANADORA: brillo dorado + marcador dorado */
+/* barra-card GANADORA: brillo dorado — optimizado con opacity en ::after */
 .obs-card.is-winner .obs-bar {
   border-color: #ffb830;
-  animation: obsWinGlow 1.15s ease-in-out infinite;
+  position: relative;
+  isolation: isolate;
+}
+.obs-card.is-winner .obs-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1px solid #ffb830;
+  box-shadow: 0 0 1.6vw rgba(255, 184, 48, 0.8), inset 0 0 1vw rgba(255, 184, 48, 0.3);
+  pointer-events: none;
+  z-index: -1;
+  animation: livePulse 1.15s ease-in-out infinite;
+  will-change: opacity;
 }
 .obs-card.is-winner .obs-score {
   background: linear-gradient(160deg, #ffd76a, #d99312);
   color: #241500;
-}
-@keyframes obsWinGlow {
-  0%,
-  100% {
-    box-shadow: 0 0 0.9vw rgba(255, 184, 48, 0.75), inset 0 0 0.7vw rgba(255, 184, 48, 0.18);
-  }
-  50% {
-    box-shadow: 0 0 2.4vw rgba(255, 184, 48, 1), inset 0 0 1.4vw rgba(255, 184, 48, 0.4);
-  }
 }
 
 /* barra-card: [PC] [nombre] [marcador] — el único elemento visible */
@@ -1036,4 +1064,109 @@ body.obs-mode::-webkit-scrollbar {
   .obs-card.is-winner .obs-bar {
     animation: none;
   }
+}
+
+/* ---------------- OBS: modo edición (cards draggable) ---------------- */
+body.obs-mode.obs-editing {
+  background: #0d0d12;
+}
+.obs-edit-root {
+  background: #0d0d12 !important;
+  pointer-events: auto;
+  display: block;
+}
+.obs-edit-toolbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  background: rgba(7, 7, 8, 0.95);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+.obs-edit-title {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #ffb830;
+}
+.obs-edit-actions {
+  display: flex;
+  gap: 8px;
+}
+.obs-edit-btn {
+  padding: 8px 16px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.05);
+  color: #c9cbd3;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.obs-edit-btn:hover {
+  border-color: rgba(232, 16, 46, 0.6);
+  color: #fff;
+}
+.obs-edit-btn.obs-edit-save {
+  background: linear-gradient(160deg, #ff2440, #a30d24);
+  border-color: #ff2440;
+  color: #fff;
+}
+.obs-edit-btn.obs-edit-save:hover {
+  filter: brightness(1.15);
+}
+.obs-edit-card {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  z-index: 50;
+}
+.obs-edit-card.is-dragging {
+  z-index: 90;
+  filter: brightness(1.2);
+}
+.obs-edit-card.is-dragging .obs-bar {
+  border-color: #ffb830;
+  box-shadow: 0 0 24px rgba(255, 184, 48, 0.5);
+}
+.obs-card.is-draggable {
+  cursor: grab;
+  pointer-events: auto;
+}
+.obs-card.is-draggable:active {
+  cursor: grabbing;
+}
+.obs-edit-label {
+  position: absolute;
+  top: -18px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #ffb830;
+  background: rgba(7, 7, 8, 0.8);
+  padding: 2px 6px;
+  border: 1px solid rgba(255, 184, 48, 0.4);
+  pointer-events: none;
+}
+
+/* ---------------- OBS: modo transmisión con layout personalizado ---------------- */
+.obs-custom-root {
+  pointer-events: none;
+  display: block;
+}
+.obs-custom-card {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  z-index: 10;
 }

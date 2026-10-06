@@ -2,27 +2,34 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ExternalLink, Eye, Loader2, MonitorPlay, Radio, Settings2, Trophy, UserPlus } from "lucide-react";
+import { ExternalLink, Eye, Loader2, MonitorPlay, Radio, Settings2, Sparkles, Trophy, UserPlus } from "lucide-react";
 import { useBracket, usePlayers, useTournaments } from "@/lib/hooks";
+import { useContests } from "@/lib/contestHooks";
 import type { Tournament } from "@/lib/types";
 import { MODALITY_LABEL, playersCapacity } from "@/lib/types";
 import { Backdrop, Emblem, EmptyState, Select } from "./ui";
 import { TournamentsView } from "./TournamentsView";
 import { RegistrationView } from "./RegistrationView";
 import { LiveAdminView } from "./LiveAdminView";
+import { ContestsView } from "./ContestsView";
+import { CosplayAdmin } from "./CosplayAdmin";
+import { SoundAdmin } from "./SoundAdmin";
 
-type Tab = "config" | "registro" | "live";
+type Tab = "config" | "registro" | "live" | "concursos";
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: "config", label: "Configuración", icon: <Settings2 size={13} /> },
   { id: "registro", label: "Registro", icon: <UserPlus size={13} /> },
   { id: "live", label: "Torneo en vivo", icon: <Radio size={13} /> },
+  { id: "concursos", label: "Concursos", icon: <Sparkles size={13} /> },
 ];
 
 export function MainApp() {
   const { data: tournaments, loading, error } = useTournaments();
+  const { data: contests } = useContests();
   const [tab, setTab] = useState<Tab>("config");
   const [tidRaw, setTidRaw] = useState<string | null>(null);
+  const [adminContestId, setAdminContestId] = useState<string | null>(null);
 
   useEffect(() => {
     const handler = () => {
@@ -64,12 +71,14 @@ export function MainApp() {
     return map;
   }, [players, tid]);
 
-  const openViewer = (id: string) => {
-    window.open(`/?v=show&t=${id}`, "_blank", "noopener");
+  /* Visor: URL única (/?v=show) — lee el torneo ACTIVO desde Firestore.
+     Solo puede haber uno activo a la vez (lo controla el admin desde
+     "Torneo en vivo"). La URL nunca cambia, ideal para dejar fija. */
+  const openViewer = () => {
+    window.open("/?v=show", "_blank", "noopener");
   };
 
-  /* Cards OBS: web GENERAL (sin id de torneo) — la URL es siempre la misma
-     y el overlay resuelve el torneo activo, ideal para el Browser Source. */
+  /* Cards OBS: URL única (/?obs=1) — mismo torneo activo que el visor. */
   const openObsCards = () => {
     window.open("/?obs=1", "_blank", "noopener");
   };
@@ -149,11 +158,10 @@ export function MainApp() {
             </button>
             <button
               type="button"
-              onClick={() => tid && openViewer(tid)}
-              disabled={!tid}
-              title="Abrir visor para espectadores (nueva pestaña)"
+              onClick={openViewer}
+              title="Abrir visor para espectadores (nueva pestaña) — muestra el torneo activo"
               aria-label="Abrir visor para espectadores"
-              className="btn-press clip-btn red-badge px-3 sm:px-4 py-2.5 text-[10px] font-extrabold uppercase tracking-[0.14em] flex items-center gap-1.5 disabled:opacity-40"
+              className="btn-press clip-btn red-badge px-3 sm:px-4 py-2.5 text-[10px] font-extrabold uppercase tracking-[0.14em] flex items-center gap-1.5"
             >
               <Eye size={13} />
               <span className="hidden sm:inline">Visor</span>
@@ -193,7 +201,7 @@ export function MainApp() {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.25 }}
             >
-              {tournaments.length === 0 && tab !== "config" ? (
+              {tournaments.length === 0 && tab !== "config" && tab !== "concursos" ? (
                 <div className="panel clip-card">
                   <EmptyState
                     icon={<Trophy size={26} />}
@@ -223,6 +231,42 @@ export function MainApp() {
                 />
               ) : tab === "registro" ? (
                 <RegistrationView tournament={tournament} players={players} loading={false} />
+              ) : tab === "concursos" ? (
+                adminContestId ? (
+                  (() => {
+                    const c = contests.find((x) => x.id === adminContestId);
+                    if (!c) {
+                      return (
+                        <div className="panel clip-card">
+                          <EmptyState
+                            icon={<Sparkles size={26} />}
+                            title="Concurso no encontrado"
+                            message="El concurso que buscas ya no existe."
+                            action={
+                              <button
+                                type="button"
+                                onClick={() => setAdminContestId(null)}
+                                className="btn-press clip-btn red-badge px-5 py-3 text-[11px] font-extrabold uppercase tracking-[0.14em]"
+                              >
+                                Volver a concursos
+                              </button>
+                            }
+                          />
+                        </div>
+                      );
+                    }
+                    return c.type === "cosplay" ? (
+                      <CosplayAdmin contest={c} onClose={() => setAdminContestId(null)} />
+                    ) : (
+                      <SoundAdmin contest={c} onClose={() => setAdminContestId(null)} />
+                    );
+                  })()
+                ) : (
+                  <ContestsView
+                    onAdmin={(cid) => setAdminContestId(cid)}
+                    onViewer={openViewer}
+                  />
+                )
               ) : (
                 <LiveAdminContainer tid={tid} tournament={tournament} players={players} />
               )}

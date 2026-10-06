@@ -80,6 +80,7 @@ function SlotView({
   const cls = [
     "slot-wrap plate relative h-[30px] mb-[3px] flex items-stretch overflow-hidden",
     isDq ? "slot-dq" : "",
+    slot.st === "rep" ? "slot-sub" : "",
     isWinner ? "slot-winner" : "",
     isLoser && !isDq ? "slot-loser" : "",
     isLive && !isWinner && !isLoser ? "slot-live" : "",
@@ -117,11 +118,6 @@ function SlotView({
       </div>
       {isWinner ? (
         <span className="plate-gold chip clip-tag self-center mr-1.5 text-[8px] px-1.5 py-[2px] tracking-[0.1em]">PASA</span>
-      ) : null}
-      {slot.st === "rep" && !isDq ? (
-        <span className="chip clip-tag self-center mr-1.5 text-[8px] px-1.5 py-[2px] bg-[#1a1a21] text-[#8e919c] border border-white/15 tracking-[0.1em]">
-          SUB
-        </span>
       ) : null}
       {pcTag ? (
         <span

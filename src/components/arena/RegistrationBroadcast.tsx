@@ -47,7 +47,6 @@ function SeatCell({
   }
   return (
     <motion.div
-      layout
       initial={{ opacity: 0, scale: 0.6, y: 14 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.8 }}

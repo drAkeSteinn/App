@@ -43,7 +43,7 @@ function SlotLine({
     <div
       className={`slot-wrap plate relative h-[34px] mb-[3px] flex items-stretch overflow-hidden ${
         slot.st === "dq" ? "slot-dq" : ""
-      } ${isWinner ? "slot-winner" : ""} ${isLoser ? "slot-loser" : ""}`}
+      } ${slot.st === "rep" ? "slot-sub" : ""} ${isWinner ? "slot-winner" : ""} ${isLoser ? "slot-loser" : ""}`}
     >
       <div className="red-badge clip-badge w-[34px] shrink-0 flex items-center justify-center">
         <span className="font-display italic text-[15px] leading-none pt-[1px]">{slot.score}</span>
@@ -86,11 +86,6 @@ function SlotLine({
         >
           <Monitor size={8} />
           {pcTag}
-        </span>
-      ) : null}
-      {slot.st === "rep" ? (
-        <span className="chip clip-tag self-center mr-1.5 text-[8px] px-1.5 py-[2px] bg-[#1a1a21] text-[#8e919c] border border-white/15 tracking-[0.1em]">
-          SUB
         </span>
       ) : null}
       {slot.st === "dq" ? (

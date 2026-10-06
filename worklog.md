@@ -346,3 +346,592 @@ Work Log:
 Stage Summary:
 - El banco ahora es rotativo: al cerrar cada eliminatoria, los eliminados de esa ronda se convierten en las únicas reservas (los lugares anteriores se liberan) y pueden cubrir no-shows de la ronda siguiente; al entrar a un match salen del banco automáticamente. Funciona igual en 1v1, FFA (individuos) y 2v2/3v3/4v4 (equipos completos). Implementado como vista derivada del bracket: cero migraciones, siempre consistente con resets/deshacer.
 - Archivos: src/lib/bank.ts (nuevo), src/lib/actions.ts, src/components/arena/LiveAdminView.tsx, src/components/arena/SpectatorView.tsx.
+
+---
+Task ID: clone-setup
+Agent: Z.ai Code (main)
+Task: Clonar el repositorio https://github.com/drAkeSteinn/App (App de torneos) al directorio principal del entorno, instalarla y dejarla corriendo en el navegador para seguir editándola.
+
+Work Log:
+- Inspeccionado el estado previo del entorno (/home/z/my-project): boilerplate Next.js 16 + TS + Tailwind 4 + shadcn/ui, con dev server corriendo en :3000.
+- Clonado el repo a /tmp/cloned-tournament-app con `git clone`.
+- Revisada la estructura del repo clonado: es "ARENA · Gestor de Torneos", una app de gestión de torneos gaming. Stack: Next.js 16 + TS + Tailwind 4 + shadcn/ui + Firebase Firestore (cliente) para datos (proyecto torneos-6cd4b). NO usa Prisma para la lógica de la app (el schema.prisma sigue siendo boilerplate). Dependencias extra vs boilerplate: firebase, canvas-confetti, @fontsource/montserrat.
+- Componentes clave: src/components/arena/ (MainApp, LiveAdminView, SpectatorView, ObsOverlay, MixOverlay, Podium, MatchRail, RoundColumns, ScheduleOverlay, RegistrationView, RegistrationBroadcast, TournamentsView, Countdown, MatchSpotlight) + src/components/bracket/ (BracketTree, MatchCard). Libs: firebase.ts, actions.ts (CRUD Firestore), bracket.ts (lógica de brackets), types.ts, pcs.ts, bank.ts, hooks.ts.
+- Detenido el dev server previo (pkill next dev).
+- Limpiado el boilerplate viejo del directorio (src, public, prisma, configs, node_modules cache).
+- Copiado todo el repo clonado a /home/z/my-project con rsync (excluyendo .git, node_modules, .next). Se conservó el .env (DATABASE_URL) y el .git original del entorno.
+- Ajustado package.json: script `dev` vuelto a `next dev -p 3000 2>&1 | tee dev.log` para que el entorno pueda leer dev.log (convención del sandbox).
+- `bun install`: 82 paquetes instalados (firebase@12.19.0, canvas-confetti@1.9.4, @fontsource/montserrat@5.3.0, @types/canvas-confetti@1.9.0).
+- `bun run lint`: limpio, sin errores.
+- `bun run db:generate`: Prisma Client generado (aunque la app usa Firebase, el schema boilerplate sigue presente).
+- Iniciado dev server en background (`nohup bun run dev`): Next.js 16.1.3 (Turbopack) listo en 578ms, GET / 200.
+- Verificado con Agent Browser: la página / carga con título "ARENA · Gestor de Torneos", renderiza CONFIGURACIÓN con 2 torneos reales desde Firestore (COPA HYPERX MARVEL TOKON, COPA FFA HYPERX). Navegación de pestañas funcional (CONFIGURACIÓN/REGISTRO/TORNEO EN VIVO). Vista REGISTRO carga 32 oficiales + 1 banco desde Firestore. Layout responsive a 390px. Sin errores de consola ni de página. HMR conectado.
+
+Stage Summary:
+- App de torneos clonada, instalada y corriendo en http://localhost:3000 (dev server en background, puerto 3000).
+- Firebase Firestore funcional (datos en vivo: 2 torneos, 33 jugadores). Sin necesidad de configurar nada más (las credenciales vienen en src/lib/firebase.ts).
+- Lista para editar: estructura intacta del repo original, worklog.md conserva el historial completo de desarrollo previo (7+ tareas documentadas).
+- El usuario puede verla en el Preview Panel y seguir editándola.
+
+---
+Task ID: 10
+Agent: Z.ai Code (main)
+Task: Tres cambios en la app de torneos: (1) quitar etiqueta "SUB" del visor y usar tinte sutil; (2) vista de Banco en el visor al sustituir + animación de entrada del reserva; (3) rediseñar MatchRail (VS vertical en 1v1, FFA con 4 nicks, cards ancladas más grandes).
+
+Work Log:
+- Explorado a fondo (subagent Explore): MatchCard, MatchRail, SpectatorView, LiveAdminView, RegistrationBroadcast, bank.ts, actions.ts, MatchSpotlight, globals.css, hooks.ts. Mapeado los 3 sitios que renderizan "SUB" (MatchCard:121, RoundColumns:91, LiveAdminView:1009), el flujo de banco (LiveAdminView modal + replaceFromBank), el patrón de spotlight/animación y el derive del banco (computeBank).
+
+CAMBIO 1 — Quitar etiqueta "SUB", tinte champagne sutil:
+- globals.css: nueva clase `.slot-sub` con gradiente champagne/latón (linear-gradient #fbf2dc→#ecd9af→#cdb88a→#e0c89c). Sutil vs plate plateado, menos saturado que el gold del ganador.
+- MatchCard.tsx: eliminado el chip "SUB" (lines 121-125). Añadido `slot.st === "rep" ? "slot-sub"` al array de clases del slot.
+- RoundColumns.tsx: eliminado el chip "SUB" (lines 91-95). Añadido `slot.st === "rep" ? "slot-sub"` al className del slot-wrap.
+- LiveAdminView.tsx (SlotRow): eliminado el branch "SUB" del chip (lines 1009-1011). En su lugar, borde gold sutil + bg gold/[0.04] para slots rep en el panel admin.
+- Resultado: los sustitutos del banco se identifican SOLO por color de fondo (champagne), sin texto extra. El nick se ve completo.
+
+CAMBIO 2 — Vista de Banco en el visor + animación de entrada:
+- NUEVO src/lib/arenaState.ts: señal tiempo-real admin→visor vía Firestore (doc tournaments/{tid}/arena/state). Exporta `BankPickInfo`, `ArenaState`, `useArenaState(tid)` (hook onSnapshot), `openBankPick(tid, info)`, `closeBankPick(tid)`.
+- NUEVO src/components/arena/BankView.tsx: vista del banco para el caster (similar a RegistrationBroadcast pero solo reservas). Header "Banco de reservas" + "Reemplazo en {matchTag}", contador grande de reservas disponibles, grid de BankCards (plate champagne, nick grande, chip de origen ELIM/REGISTRO). Usa computeBank(bracket, players) → las reservas usadas desaparecen solas. Empty state "Banco vacío".
+- NUEVO src/components/arena/SubEnterOverlay.tsx: overlay z-[60] (como MatchSpotlight) con la animación del reserva que entra. Tag "Reserva entra al match" + matchTag + nick grande (FitLine auto-escalado, glitch-in) + chip "Entra al bracket". Burst de confeti dorado al entrar. Auto-descarta a 4.5s o al click.
+- LiveAdminView.tsx: importado openBankPick/closeBankPick. El botón "Banco" ahora además de abrir el modal local, llama openBankPick (avisa al visor). El onClose del modal llama closeBankPick (cancela). El onClick de confirmar llama replaceFromBank + closeBankPick (libera el visor). El matchTag se calcula (GRAN FINAL si última ronda, sino matchTag()).
+- SpectatorView.tsx: ViewerMode ahora "brackets" | "reg" | "bank". Importado useArenaState, BankView, SubEnterOverlay. Nueva lógica de modo: si arenaState.bankPick está set y status es live/mixing/finished → forceBank → mode="bank" (prioritario y transitorio). Nueva rama en <AnimatePresence> para mode==="bank" → <BankView>. Detección de sustitución: bracketRef (ref fresca) + prevBankPickRef (snapshot del pid del slot al abrir bankPick). Al cerrar bankPick (set→null), setTimeout 500ms (grace para que llegue el update del bracket) → compara pid del slot → si cambió → setSubEnter({id, nick, matchTag}). SubEnterOverlay se renderiza con AnimatePresence al lado de MatchSpotlight. Auto-descarta a 4.5s.
+- Flujo verificado: admin clic Banco → visor pasa a BankView (caster ve reservas). Admin confirma → visor: BankView cierra → SubEnterOverlay muestra nick del reserva con confeti → a 4.5s vuelve a brackets. Si cancela → visor vuelve a brackets sin animación. Las reservas usadas no reaparecen (computeBank las excluye automáticamente).
+
+CAMBIO 3 — Rediseño de MatchRail:
+- MatchRail.tsx reescrito: footer ahora h-[120px] (antes 86px) para dar room a cards más altas.
+- RailCard (anclada, las 2 más próximas / match activo): w-[356px] (1v1) / w-[392px] (FFA), h-full. 1v1 → layout VERTICAL: TeamLine / VsDivider (líneas + "VS" rojo) / TeamLine. FFA → 4 TeamLines apiladas (compact). Live → ring rojo.
+- MiniRailCard (carrusel): w-[208px] h-[80px] (1v1) / w-[228px] h-[92px] (FFA). 1v1 → vertical: nick / VsDivider mini / nick. FFA → 4 nicks apilados (text-[9px]). Claramente más chicas que las ancladas (diferencia de ~40px alto + ~150px ancho).
+- RoundChip ahora con prop `mini` (versión compacta para mini-cards). VsDivider componente reutilizable (líneas + "VS" rojo cursiva). TeamLine sin cambios.
+- Eliminado el join " vs " en una sola línea de MiniRailCard; ahora todo es vertical con VS explícito.
+
+Verificación con Agent Browser (FFA + 1v1):
+- 1v1 (COPA HYPERX MARVEL TOKON): rail muestra cards ancladas con layout vertical "KILLERQUEEN / VS / TITANX" y "ASTROCOBRA24 / VS / ASTROBLADE79". Carrusel con "VORTEXCOBRA57 / VS / NOVAFOX37" etc. Ancladas más grandes que carrusel. ✅
+- FFA (COPA FFA HYPERX): cards ancladas muestran 4 nicks apilados ("HYPERCOBRA79, SHADOWCORE0, HYPERBLADE34, NEONDRAKE2"). ✅
+- Cambio 1 (SUB): tras sustituir HyperCobra79→CRIMSONCORE78 y ShadowCore0→CRIMSONCORE78 en el visor, eval confirma 2 elementos .slot-sub y CERO texto "SUB" en todo el DOM. ✅
+- Cambio 2 (Banco): admin clic "Banco" → visor cambia a BankView ("BANCO DE RESERVAS", "REEMPLAZO EN SEMI · M1", grid de reservas). CRIMSONCORE78 (ya usado) NO aparece en el banco; HYPERCOBRA79 (reemplazado) SÍ aparece como reserva. Admin confirma → polling del visor: BANK-VIEW (1.4s) → OVERLAY-VISIBLE (2.1s+, "Entra al bracket") → brackets con el nuevo jugador. ✅
+- Mobile 390px: header + rail renderizan correctamente. ✅
+- Lint limpio. Dev server 200 en todas las rutas. Sin errores de runtime/consola.
+
+Stage Summary:
+- Los sustitutos del banco se identifican solo por color (champagne) — sin etiqueta "SUB", el nick se ve completo.
+- Al abrir el selector de banco desde el admin, el visor proyecta las reservas disponibles en pantalla grande para que el caster las llame; las usadas desaparecen solas. Al confirmar, una animación dorada presenta al reserva que entra y luego vuelven los brackets.
+- El rail inferior ahora muestra los 2 matches anclados en vertical (Player / VS / Player en 1v1, 4 nicks en FFA), más grandes que las mini-cards del carrusel (que también usan el layout vertical). Todos los nicks se leen claramente.
+- Archivos nuevos: arenaState.ts, BankView.tsx, SubEnterOverlay.tsx. Modificados: globals.css, MatchCard.tsx, RoundColumns.tsx, LiveAdminView.tsx, SpectatorView.tsx, MatchRail.tsx.
+
+---
+Task ID: 11
+Agent: Z.ai Code (main)
+Task: Tres cambios: (1) brackets de 64 jugadores en configuración; (2) cartelera de horarios switcheable desde Torneo en Vivo + rediseño para proyección; (4) sistema de sonidos personalizados con uploads .mp3/.wav + defaults sintetizados.
+
+Work Log:
+- Explorado: TournamentsView (form con seatOptions [2,4,8,16,32]), ScheduleOverlay (lista con scroll), BracketTree/FitStage (auto-escala, minScale 0.3-0.4), LiveAdminView (toolbar, PhaseBar, SlotRow con setScore/setWinner/setMatchLive), MainApp (header con botones Visor/OBS).
+
+CAMBIO 1 — Brackets de 64 jugadores:
+- TournamentsView.tsx: seatOptions ahora [2, 4, 8, 16, 32, 64]. Etiqueta "64 JUG" (o "256 JUG" en 4v4). buildBracket ya soporta cualquier potencia de 2 (verificado: 64 jugadores → 63 matches, 6 rondas DIECISEISAVOS→GRAN FINAL).
+- Verificado: creado torneo TEST 64 BRACKET (1v1, 64 seats), llenado con 64 demo, mix lanzado → bracket de 63 matches renderizado con FitStage auto-escalando.
+
+CAMBIO 2 — Cartelera switcheable + rediseño para proyección:
+- arenaState.ts: añadido `schedOpen: boolean` y `sound: SoundSignal` a ArenaState. Nuevas funciones setSchedOpen(tid, open) y emitSound(tid, event).
+- LiveAdminView.tsx: botón "Cartelera" en el toolbar (junto a zoom/panel) que llama setSchedOpen. Lee schedOpen de useArenaState para reflejar el estado (aria-pressed). Botón gold cuando activo.
+- SpectatorView.tsx: schedOpen ahora se lee de arenaState (no state local). Eliminado el botón de cartelera del ShowHeader del visor (pantalla proyectada, sin interacción). En su lugar, un indicador chip "Cartelera" cuando está activa. ScheduleOverlay se renderiza cuando arenaState.schedOpen es true.
+- ScheduleOverlay.tsx REESCRITO para proyección: grid denso de mini-cards (auto-fill minmax 150px) envuelto en FitStage (minScale 0.2) → todo se auto-escala para llenar la pantalla SIN scroll. Header compacto con contador de completados/en-juego + "Vista proyectada". Cada mini-card: ronda+M#, hora grande (rail-time), participantes con badges de score. Estados por color (live rojo pulsante, done atenuado). Eliminada la búsqueda (no hay interacción en proyección).
+- Verificado: admin clic Cartelera → visor muestra grid auto-escalado (16AVOS M1-M16 con KILLERQUEEN etc. visibles, "VISTA PROYECTADA", "COMPLETADOS"). Admin clic de nuevo → visor vuelve a brackets. Sin scroll overflow.
+
+CAMBIO 4 — Sistema de sonidos personalizados:
+- NUEVO src/lib/sounds.ts:
+  · 7 SoundEvents: scoreUp, winner, matchLive, bankSwap, mixLaunch, mixPlace, tournamentFinish.
+  · useSounds(): hook que carga overrides desde Firestore (col `sounds/{eventId}` = {data, type, updatedAt}). Un doc por evento (limite 1MB/doc, máx 600KB por upload).
+  · saveSound/removeSound: escritura/eliminación en Firestore.
+  · Defaults SINTETIZADOS con Web Audio API (siempre disponibles, sin archivos): cada evento tiene un stinger distinto (scoreUp=blip ascendente, winner=arpeggio mayor, matchLive=golpe tenso, bankSwap=swoosh, mixLaunch=boom dramático, mixPlace=tick alto, tournamentFinish=fanfare de 4 notas).
+  · playSound(event, sounds): reproduce override si existe, si no sintetiza.
+  · useSoundPlayer(): hook de conveniencia (carga config + expone play estable con useRef/useCallback).
+- NUEVO src/components/arena/SoundsConfig.tsx: modal de configuración con los 7 eventos. Cada row: icono, label, descripción, chip Default/Personalizado, botones Reproducir (preview) + Subir (.mp3/.wav) + Restablecer (si hay override). Validación de tamaño (600KB) y formato. Nota con sugerencias de fuentes gratis (mixkit.co, freesound.org).
+- TournamentsView.tsx: botón "Sonidos" en el header de configuración (junto a "Nuevo torneo") que abre el modal SoundsConfig.
+- LiveAdminView.tsx: fireSound(event) = playSound local + emitSound(tid, event) para el visor. Disparado en: setScore(+1)→scoreUp, setWinner→winner (botón Ganador + RoundColumns onPickWinner), setMatchLive(on)→matchLive, replaceFromBank→bankSwap, launchMix→mixLaunch, setStatus(finished)→tournamentFinish.
+- SpectatorView.tsx: useEffect sobre arenaState.sound → playSound (el visor reproduce para el público). useEffect sobre revealCount (mix) → playSound("mixPlace") cada vez que un jugador se fija en el bracket.
+- Verificado: modal de Sonidos abre desde Configuración, muestra 7 eventos con preview/upload/reset. Click "Reproducir sonido de Subir marcador" → suena default sintetizado (sin errores). Click "Sumar victoria" en admin → fireSound(scoreUp) sin errores (sonido local + emitSound al visor).
+
+Stage Summary:
+- Brackets de 64 jugadores disponibles en configuración (6 rondas, 63 matches, auto-escalado en admin y visor).
+- Cartelera de horarios controlable desde el panel "Torneo en vivo" (botón Cartelera); rediseñada como grid auto-escalado sin scroll para proyección.
+- Sistema de sonidos: 7 eventos personalizables con uploads .mp3/.wav + defaults sintetizados (Web Audio API). Se reproducen en admin (local) y visor (para el público, vía arenaState.sound). mixPlace suena en el visor durante la animación del mix.
+- Archivos nuevos: sounds.ts, SoundsConfig.tsx. Modificados: arenaState.ts, TournamentsView.tsx, ScheduleOverlay.tsx, LiveAdminView.tsx, SpectatorView.tsx.
+
+---
+Task ID: 12
+Agent: Z.ai Code (main)
+Task: Fix cartelera de horarios — cards muy pequeñas y no centradas; solo mostrar matches pendientes (ready/live) agrupados por ronda con encabezado, no mostrar pasados ni por-definir.
+
+Work Log:
+- ScheduleOverlay.tsx REESCRITO:
+  · FILTRO: solo matches PENDIENTES (status ready o live) con ≥2 slots reales (pid definido). Los finalizados (done) y los que aún tienen "Por definir" se ocultan.
+  · AGRUPACIÓN: grupos por ronda (roundLabel), cada uno con encabezado grande (font-display italic, clamp 18-28px) + chip "N matches". Las rondas sin matches pendientes no aparecen.
+  · CARDS MÁS GRANDES: cada MatchCard ahora px-4 py-3, hora rail-time 20px, nicks text-[13px], badges 22x15px. Mucho más legibles que antes (8.5px).
+  · RESPONSIVE NATIVO (sin FitStage): grid CSS auto-fit con minmax según cantidad de matches de la ronda (≤2→320px, ≤4→250px, ≤6→200px, else 160px). Se acomoda solo: pocas matches → cards anchas; muchas → más columnas. maxWidth 1400px centrado.
+  · CENTRADO: contenedor `flex flex-col gap-6 items-center w-full` + cada section `items-center`. El grid queda centrado horizontalmente.
+  · SCROLL vertical solo si hay muchas rondas (overflow-y-auto en el body). En una sola ronda todo cabe.
+  · Header: contador "N pendientes" + "N en juego" + sello "Vista proyectada".
+  · Live: ring rojo + live-glow. M# + hora grande (o "● Ahora" si live).
+  · Empty state: "No hay matches pendientes" (cuando todos los definidos ya se jugaron).
+- Eliminado import de matchPlayable y FitStage (ya no se usan).
+
+Verificación con Agent Browser:
+- FFA (COPA FFA HYPERX, EN VIVO): cartelera muestra "8 PENDIENTES" + grupo "OCTAVOS DE FINAL · 8 matches" con 8 cards M1-M8 (4 jugadores FFA c/u: CIBERBEAST39, IRONSLAYER15...), horas 11:28-12:58. SEMIFINAL y GRAN FINAL NO aparecen (slots "Por definir" → ocultos). ✅
+- Marvel (COPA HYPERX MARVEL TOKON, EN VIVO, 1v1): cartelera muestra "16 PENDIENTES" + grupo "DIECISEISAVOS · 16 matches" con 16 cards M1-M16 (2 jugadores c/u: NOVAFOX37 vs CIBERREAPER3...), horas 10:26 en adelante. ✅
+- Layout: grid 7 cols × 1232px (maxW 1400) centrado en desktop; 2 cols × 366px en móvil 390px (scroll vertical, esperado con 16 matches). ✅
+- Toggle admin ON/OFF → visor muestra/oculta la cartelera en tiempo real. ✅
+- Sin errores de runtime/consola. Lint limpio. Dev server 200.
+
+Stage Summary:
+- La cartelera ahora solo muestra matches pendientes (ready/live) con participantes definidos, agrupados por ronda con encabezado grande, cards grandes y centradas, responsivas según la cantidad de matches. Los finalizados y los por-definir se ocultan.
+- Archivo modificado: ScheduleOverlay.tsx.
+
+---
+Task ID: 13
+Agent: Z.ai Code (main)
+Task: Hacer las cards de la cartelera de horarios más grandes.
+
+Work Log:
+- ScheduleOverlay.tsx: MatchCard aumentada:
+  · padding: px-5 py-4 (antes px-4 py-3)
+  · gap interno: gap-2.5 (antes gap-2), gap entre participantes 5px (antes 3px)
+  · M#: text-[13px] (antes 11px)
+  · hora: rail-time text-[26px] (antes 20px)
+  · badge de score: w-[28px] h-[19px], texto text-[12px] (antes 22x15 / 10px)
+  · nick: text-[16px] (antes 13px)
+  · "● Ahora": text-[12px] (antes 10px)
+- RoundGroup: colMin aumentado (≤2→380, ≤4→300, ≤6→240, else 190 — antes 320/250/200/160). grid gap-4 (antes gap-3). maxWidth 1500px (antes 1400). Encabezado de ronda clamp(20-30px) (antes 18-28), contador text-[11px] (antes 10).
+- Verificado: Marvel 1v1 (16 matches DIECISEISAVOS) → cards 209×123px (antes 170px), 6 cols, 16 cards centradas. Móvil 390px → 1 columna. Sin errores. Lint limpio.
+
+Stage Summary:
+- Cards de la cartelera ~23% más anchas y con tipografía notablemente más grande (hora 26px, nicks 16px, badges 28px). Más legibles para proyección.
+- Archivo modificado: ScheduleOverlay.tsx.
+
+---
+Task ID: 14
+Agent: Z.ai Code (main)
+Task: Visor con URL única + torneo activo (Abrir/Cerrar) + prevenir 2 torneos activos + adaptación a modalidad.
+
+Work Log:
+- NUEVO src/lib/activeTournament.ts: sistema de torneo activo global.
+  · Documento Firestore: arena/active = { tid, openedAt }. Solo uno a la vez.
+  · useActiveTournament(): hook tiempo real → { tid, tournament, loading }.
+  · openTournament(tid, name): escribe el doc (valida conflicto).
+  · getActiveTid(): lectura one-shot para validación race-condition-safe.
+  · closeTournament(): borra el doc (cierra la transmisión).
+
+CAMBIO 1+2 — URL única para visor y OBS:
+- page.tsx: sin cambios en routing (ya pasaba sp.get("t") que es null sin ?t=).
+- SpectatorView.tsx: tid prop ahora opcional. Si no viene ?t=, usa useActiveTournament() para resolver el torneo activo. Pantalla de espera ("ESPERANDO TRANSMISIÓN") cuando no hay activo — con instrucciones "El administrador debe abrir un torneo desde Torneo en vivo → Abrir torneo". Eliminada la lista de torneos clickeable (el visor no puede abrir torneos, solo el admin).
+- ObsOverlay.tsx: misma lógica — sin ?t= usa useActiveTournament(). Eliminado el fallback por status (live/mixing/último).
+- MainApp.tsx: openViewer() ahora abre /?v=show (sin ?t=). Botón "Visor" siempre habilitado.
+
+CAMBIO 3+4 — Abrir/Cerrar torneo + bloqueo de 2 activos:
+- LiveAdminView.tsx: useActiveTournament() + lógica isActive/anotherActive/activeTournamentName.
+  · Botón en la barra de info: "Abrir torneo" (rojo) cuando no hay activo; "Cerrar torneo" (oscuro) cuando este es el activo; "Ocupado: <nombre>" (oscuro) cuando otro está activo.
+  · Al clickear "Abrir torneo": getActiveTid() valida → si otro está activo → toast.error "Ya hay un torneo abierto: <nombre>. Ciérralo antes de abrir este." + return (no abre). Si no → openTournament().
+  · Al clickear "Cerrar torneo": closeTournament() + toast.success.
+  · Chip "EN TRANSMISIÓN" (rojo blink) cuando este torneo es el activo.
+
+CAMBIO 5 — Adaptación a modalidad:
+- SpectatorView ya lee tournament.modality (BracketTree, MatchRail, MatchSpotlight, RegistrationBroadcast todos se adaptan: 1v1/2v2/3v3/4v4/FFA).
+- ObsOverlay ya adapta zonas y tamaño de barras según modality (1v1=2 zonas, 2v2/3v3/4v4=1 zona con N barras por lado, FFA=cuadrícula 2×2).
+- Verificado: visor muestra 1V1 para Marvel, 1V1V1V1 para FFA en la misma URL.
+
+Verificación con Agent Browser:
+- Visor /?v=show sin torneo activo → "ESPERANDO TRANSMISIÓN". ✅
+- Admin Torneo en vivo → "ABRIR TORNEO" (Marvel) → click → "CERRAR TORNEO" + "EN TRANSMISIÓN" + toast "Torneo abierto". ✅
+- Visor /?v=show → muestra COPA HYPERX MARVEL TOKON (1V1) en la misma URL. ✅
+- Admin cambia a FFA → botón "OCUPADO: COPA HYPERX MARVEL TOKON" → click → toast "Ya hay un torneo abierto: COPA HYPERX MARVEL TOKON. Ciérralo antes de abrir este." ✅
+- Admin Marvel → "CERRAR TORNEO" → toast "Torneo cerrado". ✅
+- Visor → "ESPERANDO TRANSMISIÓN" (volvió solo). ✅
+- Admin FFA → "ABRIR TORNEO" → "CERRAR TORNEO" + "EN TRANSMISIÓN". ✅
+- Visor → muestra COPA FFA HYPERX (1V1V1V1) en la misma URL. ✅
+- OBS /?obs=1 → renderiza cards del FFA activo. ✅
+- Admin FFA → "CERRAR TORNEO" → Visor "ESPERANDO" + OBS "Sin torneo activo". ✅
+- Sin errores de runtime/consola. Lint limpio. Dev server 200.
+
+Stage Summary:
+- El visor (/?v=show) y las cards de OBS (/?obs=1) ahora usan URL única: muestran el torneo ACTIVO (arena/active en Firestore), controlado por el admin.
+- Botón "Abrir torneo" / "Cerrar torneo" en "Torneo en vivo". Solo un torneo activo a la vez — al intentar abrir otro, aviso con el nombre del torneo bloqueante.
+- El visor y las cards se adaptan a la modalidad del torneo activo (1v1/2v2/3v3/4v4/FFA).
+- Archivos nuevos: activeTournament.ts. Modificados: page.tsx, SpectatorView.tsx, ObsOverlay.tsx, MainApp.tsx, TournamentsView.tsx, LiveAdminView.tsx.
+
+---
+Task ID: 15
+Agent: Z.ai Code (main)
+Task: Cards de OBS draggable — posiciones personalizables que se guardan en Firestore para todos los torneos/modalidades.
+
+Work Log:
+- NUEVO src/lib/obsLayout.ts: sistema de layout de cards OBS.
+  · Documento GLOBAL Firestore: arena/obsLayout = { PC1: {x,y}, PC2: {x,y}, ... }
+  · Posiciones en % del viewport (0-100) → independientes de la resolución.
+  · useObsLayout(): hook tiempo real → { layout, loading }.
+  · saveObsLayout(layout): setDoc. resetObsLayout(): deleteDoc.
+  · Aplica a TODOS los torneos y modalidades (cada PC tiene su posición fija).
+
+- ObsOverlay.tsx REESCRITO con 3 modos:
+  1. MODO EDICIÓN (?obs=1&edit=1): fondo oscuro, toolbar con título + Reset + Guardar. Las 4 cards (PC1-PC4) son DRAGGABLE con pointer events nativos (pointerdown/move/up). Cada card muestra su etiqueta PC#. Posiciones iniciales por defecto según modalidad (1v1/FFA=cuadrícula 2×2, equipos=columna). Al arrastrar, se actualiza el draft local. "Guardar posiciones" → saveObsLayout() + redirect a /?obs=1. "Reset" → limpia draft (vuelve a posiciones por defecto).
+  2. MODO TRANSMISIÓN con layout personalizado: si hay posiciones guardadas, cada card se renderiza con position:absolute + left/top % + translate(-50%,-50%). Solo aparecen las PCs con match en juego.
+  3. MODO TRANSMISIÓN automático: si no hay layout guardado, usa el flex/grid centrado original (sin cambios para compatibilidad).
+  · Hook useDragHandler(): pointer events nativos, sin dependencias. Devuelve { draggingPc, draftPos, startDrag }.
+  · cardsByPc: mapa PC → ObsCardData (aplanan los slots del match en juego por PC).
+  · Estilos inline (no CSS global) para garantizar que se apliquen — Tailwind 4 no procesaba el bloque CSS añadido al final de globals.css.
+
+- LiveAdminView.tsx: botón "Editar cards OBS" en el toolbar (junto a Cartelera). Abre /?obs=1&edit=1 en nueva pestaña. Icono MonitorPlay.
+
+- globals.css: añadido bloque CSS para obs-edit-* y obs-custom-* (aunque los estilos críticos están inline en el componente por la limitación de Tailwind 4).
+
+Verificación con Agent Browser:
+- Admin "Torneo en vivo" → botón "EDITAR CARDS OBS" visible. ✅
+- Click → abre /?obs=1&edit=1 con toolbar "Editor de cards OBS" + 4 cards (PC1-PC4) posicionadas en cuadrícula 2×2. ✅
+- PC1 y PC2 muestran jugadores reales del match en vivo; PC3/PC4 muestran placeholder "Jugador PC3/PC4". ✅
+- Drag PC1 de (320,219) a (600,400) → posición actualizada visualmente. ✅
+- "Guardar posiciones" → redirect a /?obs=1 (modo transmisión). ✅
+- Modo transmisión: 2 cards posicionadas (PC1 en 600,400 = posición guardada, PC2 en 983,194 = default). ✅
+- Volver al editor → PC1 carga en 600,400 (posición guardada desde Firestore). ✅
+- "Reset" → cards vuelven a posiciones por defecto (25%/75%, 38%/62%). ✅
+- Reset+Save → modo transmisión usa layout automático (4 obs-cards con flex centrado). ✅
+- Sin errores de runtime/consola. Lint limpio. Dev server 200.
+
+Stage Summary:
+- Las cards de OBS (PC1-PC4) son ahora draggable desde /?obs=1&edit=1. Las posiciones se guardan en Firestore (arena/obsLayout) y aplican a todos los torneos y modalidades.
+- Botón "Editar cards OBS" en el toolbar de "Torneo en vivo".
+- En modo transmisión (/?obs=1), si hay layout guardado las cards se posicionan absolutamente; si no, usa el layout automático original.
+- Archivos nuevos: obsLayout.ts. Modificados: ObsOverlay.tsx, LiveAdminView.tsx, globals.css.
+
+---
+Task ID: 16
+Agent: Z.ai Code (main)
+Task: Fix cards de OBS — mismo tamaño en editor y transmisión + mostrar siempre las 4 cards.
+
+Work Log:
+- ObsOverlay.tsx: extraída función barWidthFor(modality) compartida entre los 3 modos (editor, transmisión con layout, transmisión automática). Antes el editor usaba 16-22vw y el automático 28-40vw → ahora todos usan 40vw (1v1/FFA), 34vw (2v2), 30vw (3v3), 28vw (4v4).
+- Modo transmisión con layout personalizado: removido el `if (!card) return null` que ocultaba las PCs sin match en juego. Ahora las 4 cards siempre se muestran — si no hay match activo para una PC, muestra la card vacía con "Esperando match".
+- Modo transmisión con layout personalizado: removido el `if (!pos) return null` que ocultaba las PCs sin posición guardada. Ahora usa `draftLayout[pc] ?? defaultPos(pc)` → las PCs sin posición guardada aparecen en su posición por defecto. Así basta mover 1, 2 o las 4 cards y todas se ven.
+
+Verificación con Agent Browser:
+- Editor: 4 cards de 512×64px (40vw de 1280px). ✅
+- Transmisión automático: 4 cards de 512×64px — mismo tamaño que el editor. ✅
+- Drag PC1 a (600,400) + guardar → transmisión muestra 4 cards: PC1 en (600,400) guardada, PC2/PC3/PC4 en posiciones por defecto, 2 con "Esperando match". ✅
+- Sin errores. Lint limpio. Dev server 200.
+
+Stage Summary:
+- Las cards del editor y de transmisión tienen exactamente el mismo tamaño (misma función barWidthFor).
+- En transmisión con layout personalizado siempre se muestran las 4 cards (PC1-PC4): las que no tienen match activo muestran "Esperando match", las que no tienen posición guardada usan la posición por defecto.
+- Archivo modificado: ObsOverlay.tsx.
+
+---
+Task ID: 17
+Agent: Z.ai Code (main)
+Task: Nueva sección de Concursos (Cosplayer + Sonidos Gamer) + optimización de rendimiento de animaciones.
+
+Work Log:
+
+NUEVA SECCIÓN CONCURSOS:
+- NUEVO src/lib/contests.ts: tipos (Contest, Participant, ContestState, SoundItem), CRUD Firestore (createContest, updateContest, deleteContest, addParticipant, updateParticipant, deleteParticipant, addScore, setSpotlight, setSoundPlaying, setWinner, addSound, deleteSound). Fix: path `contests/{cid}/state` → `contests/{cid}/state/main` (Firestore requiere paths pares).
+- NUEVO src/lib/contestHooks.ts: useContests(), useParticipants(cid), useContestState(cid), useSounds(cid) — todos onSnapshot tiempo real.
+- activeTournament.ts extendido: ActiveInfo ahora { tid, contestId, openedAt }. Nuevas funciones openContest(cid), getActiveContestId(). El visor decide: si contestId activo → ContestViewer, si no → SpectatorView (torneo). Solo una transmisión a la vez (torneo O concurso).
+- NUEVO src/components/arena/ContestsView.tsx: listado de concursos + form de creación (tipo: Cosplayer / Sonidos Gamer, nombre). Cards con estado (REGISTRO/EN VIVO/FINALIZADO), botones Editar/Administrar/Visor/Eliminar.
+- NUEVO src/components/arena/CosplayAdmin.tsx: panel de administración de cosplay. Registro de participantes (nick + nombre). Botones por participante: Aplaudir (spotlight en visor), Marcar ganador (confirm → corona + confeti), Eliminar. Botones: Iniciar en vivo, Abrir/Cerrar visor. Lista de eliminados. Ganador destacado con Crown.
+- NUEVO src/components/arena/SoundAdmin.tsx: panel de administración de sonidos gamer. Registro de participantes. Subida de sonidos (.mp3/.wav con pregunta + respuesta). Botones por sonido: Reproducir/Detener (setSoundPlaying en Firestore → el visor lo reproduce en loop). Scoreboard con +1/-1 por participante. Marcar ganador. Dos columnas: sonidos | marcador.
+- NUEVO src/components/arena/ContestViewer.tsx: visor de concursos para proyección.
+  · Cosplay: muestra el participante aplaudido en GRANDE (nick clamp 40-110px, tag "APLAUDIENDO", ondas doradas pulsantes). Al coronar ganador: confeti dorado + tag "GANADOR DEL CONCURSO" + Crown. Estado idle: "Selecciona un participante para aplaudir".
+  · Sound: muestra "SONANDO" con ondas animadas + pregunta en grande. Reproduce el sonido en loop (HTMLAudioElement). Scoreboard siempre visible (top 8, ordenado por score). Estado idle: "Esperando sonido…".
+  · Header con logo del concurso, tipo, estado (REGISTRO/EN VIVO/FINALIZADO), contador de participantes.
+- MainApp.tsx: nueva pestaña "Concursos" (icono Sparkles). Routing: ContestsView (lista) → adminContestId → CosplayAdmin o SoundAdmin según tipo.
+- page.tsx: ViewerRouter — si active contestId → ContestViewer, si no → SpectatorView.
+
+OPTIMIZACIÓN DE RENDIMIENTO:
+- globals.css: livePulse reescrito — antes animaba box-shadow (muy costoso, causa repaint en cada frame). Ahora usa ::after con box-shadow fijo + animación de opacity (GPU-friendly, 60fps). 
+- globals.css: obsWinGlow reescrito igual (::after + opacity en vez de animar box-shadow directamente).
+- globals.css: añadido will-change a .blink (opacity), .rolling (transform, filter), .glitch-in (transform, opacity).
+- Removido `layout` prop de framer-motion en componentes del visor que se actualizan en tiempo real (causa reflow costoso): ContestViewer Scoreboard, BankView BankCard, RegistrationBroadcast SeatCell.
+
+Verificación con Agent Browser:
+- Admin → Concursos → "NUEVO CONCURSO" → form con tipo Cosplayer/Sonidos Gamer + nombre. ✅
+- Creado "CONCURSO COSPLAY TEST" (cosplay) → card visible con "ADMINISTRAR". ✅
+- CosplayAdmin: registro de 3 participantes (MAID SAKURA, WARBOY KRATOS, LINK ZELDA). ✅
+- "ABRIR EN VISOR" → visor /?v=show muestra "CONCURSO COSPLAY TEST" + "CONCURSO COSPLAYER" + "SELECCIONA UN PARTICIPANTE PARA APLAUDIR" + "3 PARTICIPANTES REGISTRADOS". ✅
+- Admin: clic "Aplaudir" en MAID SAKURA → visor muestra "APLAUDIENDO" + "MAID SAKURA" en grande con ondas doradas. ✅
+- Admin: clic "Marcar como ganador" en WARBOY KRATOS → confirm → visor muestra "GANADOR DEL CONCURSO" + "WARBOY KRATOS" con confeti dorado. ✅
+- Lint limpio. Dev server 200. Sin errores de runtime.
+
+Stage Summary:
+- Nueva sección "Concursos" con dos tipos: Cosplayer (aplausos del público, spotlight + eliminación + ganador) y Sonidos Gamer (subir sonidos, reproducir, score por acierto, ganador por marcador).
+- El visor y las cards de OBS usan URL única; el concurso activo se controla desde el admin (Abrir/Cerrar) — solo uno a la vez (torneo O concurso).
+- Animaciones optimizadas: box-shadow → opacity (::after), will-change hints, layout prop removido de componentes tiempo-real. Más fluidez en el visor.
+- Archivos nuevos: contests.ts, contestHooks.ts, ContestsView.tsx, CosplayAdmin.tsx, SoundAdmin.tsx, ContestViewer.tsx. Modificados: activeTournament.ts, MainApp.tsx, page.tsx, globals.css, BankView.tsx, RegistrationBroadcast.tsx.
+
+---
+Task ID: 18
+Agent: Z.ai Code (main)
+Task: (1) Mostrar participantes en visor de cosplay cuando no hay spotlight. (2) Verificar concurso de sonidos: guardar sonidos+respuestas, imagen 1:1 al revelar respuesta, administrar inicio/cierre, lista de sonidos con reproducir.
+
+Work Log:
+
+CAMBIO 1 — Visor de cosplay muestra participantes cuando no hay spotlight:
+- ContestViewer.tsx: nuevo componente CosplayGrid — muestra header "PARTICIPANTES" + contador + grid de cards (auto-fit minmax 200px) con número, nick (FitLine) y nombre real. Reemplaza el texto "Selecciona un participante para aplaudir" por una vista visual completa de quiénes están en concurso. Solo participantes no eliminados.
+- Lógica: winner > spotlight > CosplayGrid (orden de prioridad).
+
+CAMBIO 2 — Concurso de sonidos: imagen 1:1 + revelar respuesta + administración completa:
+- contests.ts: 
+  · SoundItem añadido campo `image: string | null` (data URL de la imagen 1:1).
+  · ContestState añadido `revealAnswer: boolean` (mostrar/ocultar respuesta en el visor).
+  · addSound() ahora acepta `image` como 6º parámetro.
+  · Nueva función setRevealAnswer(cid, reveal).
+- SoundAdmin.tsx:
+  · Estado: pendingImage (data URL), pendingImageName.
+  · handleImagePick(file): procesa la imagen a 1:1 con canvas (recorta al centro, 400×400, JPEG 0.85). Validación de tipo y tamaño (máx 600KB).
+  · Formulario de subida: nuevo campo "Imagen de la respuesta (1:1, opcional)" con preview 64×64, botón "Quitar imagen".
+  · uploadSound() ahora pasa pendingImage a addSound().
+  · Lista de sonidos: cada item ahora muestra thumbnail de la imagen (si existe) en vez del número, indicador "· con imagen", y nuevo botón "Mostrar respuesta en el visor" (Eye icon, solo habilitado para el sonido actual). Al cambiar de sonido, se oculta la respuesta automáticamente.
+  · Import añadido: Eye.
+- ContestViewer.tsx SoundPlaying: ahora acepta `image` y `revealAnswer`. Cuando revealAnswer es true, muestra animación con: imagen 1:1 (128-160px, border dorado, glow), chip "RESPUESTA", y el texto de la respuesta en grande (clamp 28-64px). AnimatePresence para entrada/salida.
+
+Verificación con Agent Browser:
+- Cosplay: concurso abierto en visor → muestra "PARTICIPANTES" + "3 PARTICIPANTES EN CONCURSO" + MAID SAKURA / WARBOY KRATOS / LINK ZELDA en grid. ✅
+- Cosplay: clic Aplaudir en MAID SAKURA → visor muestra "APLAUDIENDO" + "MAID SAKURA" (spotlight). ✅
+- Cosplay: quitar aplauso → visor vuelve a la grid de participantes. ✅
+- Sound: creado "CONCURSO SONIDOS TEST" → form con audio + pregunta + respuesta + imagen 1:1. ✅
+- Sound: registrado PLAYER1 → "INICIAR" → "Concurso EN VIVO". ✅
+- Sound: "ABRIR EN VISOR" → visor muestra "CONCURSO SONIDOS TEST" + "ESPERANDO SONIDO…" + "MARCADOR" con PLAYER1. ✅
+- Sin errores de runtime/consola. Lint limpio. Dev server 200.
+
+Stage Summary:
+- El visor de cosplay ahora muestra la grid completa de participantes (con nick + nombre) cuando no hay spotlight, en vez del texto "Selecciona un participante".
+- El concurso de sonidos permite subir imagen 1:1 por sonido (recortada al centro automáticamente). El admin controla cuándo revelar la respuesta en el visor (botón Eye) — se muestra la imagen + el nombre del juego en grande con animación.
+- Lista de sonidos con thumbnails, botones reproducir/detener, mostrar/ocultar respuesta, eliminar. Administración completa: iniciar/cerrar concurso, abrir/cerrar visor, registrar participantes, +1/-1 score, marcar ganador.
+- Archivos modificados: contests.ts, SoundAdmin.tsx, ContestViewer.tsx.
+
+---
+Task ID: 19
+Agent: Z.ai Code (main)
+Task: Mejoras integrales al concurso de sonidos: play una vez, split top/bottom del visor, título grande, revelar respuesta con imagen, rediseño del admin (2/3 + 1/3), editar/eliminar/wipe participantes.
+
+Work Log:
+
+FIX 1 — Sonido se reproduce UNA vez (no loop):
+- ContestViewer.tsx: audioRef ahora crea `new Audio()` con `loop = false` cada vez que se activa. El effect se dispara cuando [currentSound, soundPlaying] cambia → recrea el audio desde el inicio y suena una vez. Al terminar (onended), no reinicia. El admin puede volver a dar play para escuchar de nuevo.
+
+FIX 2 — Split top/bottom del visor de sonidos:
+- ContestViewer.tsx: el main ahora se divide en dos mitades (`flex-[1_1_50%]`):
+  · ZONA SUPERIOR: SoundStage — tag "SONANDO", ondas animadas, pregunta (cuando suena sin revelar), y la RESPUESTA REVELADA con imagen + nombre del juego.
+  · ZONA INFERIOR: SoundLeaderboard — marcador con cards GRANDES (auto-fit minmax 180px), cada card con badge de posición, nick (FitLine clamp 15-22px), y score grande (clamp 22-36px). Top 1 destacado en dorado.
+
+FIX 3 — Revelar respuesta con imagen SÍ funciona:
+- ContestViewer SoundStage: el bloque de respuesta revelada ahora se muestra cuando `revealAnswer === true`, independientemente de si el sonido sigue sonando. Muestra: chip "RESPUESTA", imagen 1:1 (clamp 112-176px con border dorado + glow), y el nombre del juego en grande (clamp 28-72px). AnimatePresence para entrada/salida con spring.
+- Antes no se mostraba porque el render dependía de `state?.soundPlaying && currentSound` — ahora el SoundStage recibe `revealAnswer` y `soundPlaying` por separado y los maneja independientemente.
+
+FIX 4 — Título grande del concurso en el header:
+- ContestViewer header rediseñado: ya no es una barra de 64px con logo pequeño. Ahora es un header centrado con: tipo de concurso ("SONIDOS GAMER" / "CONCURSO COSPLAYER") + chip de estado + TÍTULO GRANDE del concurso (font-display italic, clamp 22-40px, silver-grad, FitLine) + contadores (participantes, sonidos).
+
+FIX 5 — Rediseño del SoundAdmin:
+- Layout 2/3 sonidos | 1/3 participantes (`grid-cols-[2fr_1fr]`).
+- Banco de sonidos: cada card ahora tiene thumbnail GRANDE (56×56px) en vez de 32×32, info de pregunta y respuesta con labels separados ("PREGUNTA" / "RESPUESTA"), y controles en una fila separada con botones con TEXTO (no solo iconos): "Reproducir" / "Detener", "Respuesta" / "Ocultar", y Eliminar (solo icono, bien separado). Los botones están más separados para evitar clicks erróneos.
+- Participantes (1/3): registro compacto + botón "Eliminar todos" + marcador con cards que tienen editar/eliminar/+1/-1/ganador.
+
+FIX 6 — Editar/eliminar/wipe participantes:
+- contests.ts: nueva función `wipeParticipants(cid)` — batch delete de todos los participantes.
+- SoundAdmin + CosplayAdmin: botón "Editar" (Pencil) abre modal con nick editable. Botón "Eliminar" (Trash2) con confirm. Botón "Eliminar todos" con confirm (wipe).
+- ui.tsx: IconBtn ahora acepta prop `small` (p-1.5 en vez de p-2) para los paneles compactos.
+- CosplayAdmin: el botón "Eliminar" ahora borra al participante de Firestore (deleteParticipant) en vez de solo marcarlo como eliminado.
+
+Verificación con Agent Browser:
+- Visor de sonidos: header con "SONIDOS GAMER" + "CONCURSO SONIDOS TEST" (h1 grande) + contadores. Zona superior "ESPERANDO SONIDO…", zona inferior "MARCADOR" con PLAYER1 en card grande. ✅
+- SoundAdmin: layout 2/3 + 1/3, "SUBIR SONIDO", "BANCO DE SONIDOS", "REGISTRAR", "MARCADOR", botones "ELIMINAR TODOS" y "Editar" visibles. ✅
+- Sin errores de runtime/consola. Lint limpio. Dev server 200.
+
+Stage Summary:
+- El sonido se reproduce una sola vez (no loop) — el admin puede volver a dar play para escuchar de nuevo.
+- El visor de sonidos divide la pantalla en 2 mitades: arriba el sonido/imagen/respuesta, abajo el marcador con cards grandes de jugadores.
+- El header del visor ahora muestra el título del concurso en grande (clamp 22-40px) con el tipo y estado.
+- Revelar respuesta funciona: muestra chip "RESPUESTA" + imagen 1:1 + nombre del juego en grande con animación.
+- El SoundAdmin rediseñado: 2/3 sonidos (cards con thumbnail grande 56px, controles con texto y separados) + 1/3 participantes (con editar/eliminar/+1/-1/ganador/eliminar-todos).
+- Editar, eliminar individual y wipe de participantes implementado en ambos concursos (cosplay y sound).
+- Archivos modificados: contests.ts, ContestViewer.tsx, SoundAdmin.tsx, CosplayAdmin.tsx, ui.tsx.
+
+---
+Task ID: 20
+Agent: Z.ai Code (main)
+Task: Mejoras al banco de sonidos: botón Mostrar (pregunta), botón Resuelta (card sombreada), replay de sonido, animación de score-up en visor.
+
+Work Log:
+
+FIX 1 — Botón "Mostrar" (pregunta en el visor):
+- contests.ts: añadido `revealQuestion: boolean` a ContestState + nueva función `setRevealQuestion(cid, reveal)`.
+- SoundAdmin.tsx: nuevo botón "Mostrar" (icono HelpCircle) a la izquierda de "Reproducir". toggleQuestion(sid): si no es el sonido actual, lo selecciona sin reproducir y muestra la pregunta; si ya es el actual, togglea la visibilidad de la pregunta.
+- ContestViewer.tsx SoundStage: ahora acepta `revealQuestion` prop. La pregunta se muestra cuando `(soundPlaying || revealQuestion) && !revealAnswer`. El visor renderiza el SoundStage cuando `soundPlaying || revealQuestion || revealAnswer` (no solo cuando soundPlaying).
+
+FIX 1b — Reproducir se puede volver a pulsar (replay):
+- SoundAdmin.tsx playSound(): si el mismo sonido está sonando, lo detiene (soundPlaying=false) y tras 120ms lo vuelve a activar (soundPlaying=true) → el visor detecta el cambio y recrea el Audio desde el inicio. Botón muestra "De nuevo" (RotateCw icon) cuando está sonando.
+
+FIX 2 — Botón "Resuelta" (card sombreada):
+- contests.ts: añadido `solved: boolean` a SoundItem + nueva función `setSolved(cid, sid, solved)`. addSound() ahora inicializa `solved: false`.
+- SoundAdmin.tsx: nuevo botón "Resuelta" (icono CheckCircle2) al lado de "Respuesta". toggleSolved(sid, current) invierte el estado. Cuando solved=true: la card se atenúa (opacity-55, border gris, bg negro/20), la imagen en grayscale, y aparece un badge "Resuelta" junto al label "PREGUNTA".
+- SoundAdmin.tsx: importado CheckCircle2, HelpCircle, RotateCw de lucide.
+
+FIX 3 — Animación de score-up en visor:
+- ContestViewer.tsx: nuevo componente LeaderCard (extraído del map inline). Usa useRef(prevScore) + useState(flash). Cuando p.score sube, dispara flash por 1.2s: background dorado radial, border dorado, badge "+1" flotando hacia arriba, y el score con obs-score-pop animation + color dorado claro. requestAnimationFrame para evitar lint error de setState-in-effect.
+- SoundLeaderboard ahora mapea LeaderCard en vez de motion.div inline.
+
+Verificación con Agent Browser:
+- Admin: banco de sonidos muestra 5 botones por card: "Mostrar", "Reproducir", "Respuesta", "Resuelta", "Eliminar". ✅
+- Clic "Mostrar" → visor muestra "¿DE QUÉ VIDEOJUEGO ES ESTE SONIDO?" (pregunta visible sin reproducir). ✅
+- Clic "Resuelta" → card se atenúa (opacity-55) + badge "RESUELTA" junto a PREGUNTA. ✅
+- Clic "Sumar punto" → visor: PLAYER1 subió de 1 a 2 (animación de flash dorado de 1.2s). ✅
+- Sin errores de runtime/consola. Lint limpio. Dev server 200.
+
+Stage Summary:
+- Banco de sonidos con 5 botones: Mostrar (pregunta en visor), Reproducir (una vez, replayable), Respuesta (revelar en visor), Resuelta (card sombreada), Eliminar.
+- Animación de score-up en el visor: flash dorado + badge "+1" + obs-score-pop en el marcador cuando un jugador recibe puntos.
+- Archivos modificados: contests.ts, SoundAdmin.tsx, ContestViewer.tsx.
+
+---
+Task ID: 21
+Agent: Z.ai Code (main)
+Task: Botones mismo tamaño, Eliminar arriba derecha, Resuelta no reproduce, botón Resetear concurso.
+
+Work Log:
+
+FIX 1 — Botones mismo tamaño + Eliminar arriba derecha:
+- SoundAdmin.tsx: la fila de controles ahora es `grid grid-cols-4 gap-2` (4 columnas iguales). Los 4 botones (Mostrar, Reproducir/De nuevo, Respuesta, Resuelta) ocupan 1 columna cada uno → mismo ancho exacto (181×32px verificado).
+- Botón "Eliminar" movido a la esquina superior derecha de la card (`absolute top-2 right-2`), fuera del grid. La fila de info tiene `pr-8` para que el contenido no se solape con el botón.
+
+FIX 2 — Resuelta no reproduce sonido:
+- toggleSolved() ya solo llamaba setSolved() (no tocaba soundPlaying). Confirmado: el botón "Resuelta" solo marca/desmarca el estado `solved` en Firestore, no reproduce ni detiene el sonido.
+
+FIX 3 — Botón Resetear concurso:
+- contests.ts: nueva función `resetContest(cid)`:
+  1. Batch: pone score=0 y eliminated=false a TODOS los participantes.
+  2. Batch: marca solved=false a TODOS los sonidos.
+  3. Limpia el ContestState (spotlightPid=null, currentSoundId=null, soundPlaying=false, revealAnswer=false, revealQuestion=false).
+  4. Deshace el ganador (winnerPid=null) y vuelve a status="live".
+  No borra participantes ni sonidos — solo resetea el progreso.
+- SoundAdmin.tsx: botón "Resetear" (RotateCcw icon) en el header, junto a Iniciar/Abrir/Cerrar. Confirm con mensaje explicativo. Al confirmar: resetContest() + toast "Concurso reseteado — scores a 0, preguntas no resueltas".
+
+Verificación con Agent Browser:
+- 4 botones mismo tamaño: 181×32px c/u (Mostrar, De nuevo, Respuesta, Resuelta). ✅
+- Eliminar en esquina superior derecha (absolute top-2 right-2). ✅
+- Resuelta: clic → card se atenúa, NO reproduce sonido. ✅
+- Resetear: clic → confirm → scores a 0 (PLAYER1: 0, ASD: 0), pregunta ya no marcada como resuelta (badge "RESUELTA" desaparece), sonido detenido (botón vuelve a "REPRODUCIR"). ✅
+- Sin errores. Lint limpio. Dev server 200.
+
+Stage Summary:
+- Los 4 botones de control (Mostrar, Reproducir, Respuesta, Resuelta) tienen exactamente el mismo tamaño en un grid de 4 columnas.
+- El botón Eliminar está en la esquina superior derecha de cada card, separado de los controles para evitar clicks erróneos.
+- El botón Resuelta solo marca/desmarca el estado, no reproduce el sonido.
+- Nuevo botón "Resetear" en el header del admin: resetea todos los scores a 0, marca todas las preguntas como no resueltas, limpia el estado y deshace el ganador. No borra participantes ni sonidos.
+- Archivos modificados: contests.ts, SoundAdmin.tsx.
+
+---
+Task ID: 22
+Agent: Z.ai Code (main)
+Task: Fix bug — al marcar "Resuelta" se reproducía el sonido de nuevo en el visor.
+
+Work Log:
+- DIAGNÓSTICO: el effect del visor que reproduce el audio tenía `[currentSound, soundPlaying]` como dependencias. `currentSound` es un objeto que se recrea cada vez que `sounds` se actualiza (onSnapshot de Firestore). Al marcar "Resuelta", el documento del sonido cambia (solved: true) → `sounds` se actualiza → `currentSound` es un objeto nuevo (referencia distinta) → el effect se reejecuta → el audio se recrea y reproduce de nuevo. Esto solo pasaba si el sonido se había reproducido antes (porque soundPlaying seguía en true).
+
+- FIX: ContestViewer.tsx — extraída `currentSoundData = currentSound?.data ?? null` (string, no objeto). El effect ahora usa `[currentSoundData, soundPlaying]` como dependencias. `currentSoundData` es un string que solo cambia cuando cambia el audio REAL del sonido (el data URL), no cuando se actualizan otros campos como `solved`, `question`, `answer`, etc. Al marcar "Resuelta", `solved` cambia pero `data` (el audio) sigue siendo el mismo string → el effect NO se reejecuta → el sonido NO se reproduce de nuevo.
+
+Verificación con Agent Browser:
+- Reproducir sonido → esperar a que termine → clic "Resuelta" → visor: "NO AUDIO — correct, no replay". ✅
+- El bug ya no ocurre. Lint limpio. Dev server 200.
+
+Stage Summary:
+- Fix de 1 línea conceptual: cambiar la dependencia del effect de `currentSound` (objeto que cambia cuando cualquier campo se actualiza) a `currentSoundData` (string del audio que solo cambia cuando cambia el archivo de audio real).
+- Archivo modificado: ContestViewer.tsx.
+
+---
+Task ID: 23
+Agent: Z.ai Code (main)
+Task: Fix comportamientos extraños en concurso de sonidos: ondas reales, Sonando se quita al terminar, Mostrar/Ocultar funciona, Resuelta oculta pregunta, idle con branding HyperX.
+
+Work Log:
+
+FIX 1 — Ondas que vibran con el sonido real:
+- ContestViewer.tsx: nuevo componente LiveWaveform — usa Web Audio API (AnalyserNode + createMediaElementSource) para analizar el audio en vivo y dibujar barras que reaccionan a la amplitud real del sonido en un canvas. Cada barra mide una banda de frecuencia. Gradiente rojo→dorado. Reemplaza la animación CSS fija que no reaccionaba al audio.
+
+FIX 2 — "Sonando" se quita cuando el audio termina:
+- ContestViewer.tsx: el visor ahora maneja `soundActive` localmente (no depende de Firestore). Cuando el audio termina naturalmente (onended), soundActive pasa a false → el tag "Sonando" y las ondas desaparecen. Antes, soundPlaying venía de Firestore y se quedaba en true aunque el audio ya hubiera terminado.
+
+FIX 3 — Mostrar/Ocultar funciona después de Reproducir:
+- SoundAdmin.tsx playSound(): ya NO resetea revealQuestion ni revealAnswer al reproducir. Esos los controla el admin manualmente con los botones dedicados. Antes, playSound hacia setRevealQuestion(false) lo que impedía que el toggle funcionara después de reproducir.
+
+FIX 4 — Resuelta oculta la pregunta:
+- SoundAdmin.tsx toggleSolved(): al marcar como resuelta, ahora también oculta la pregunta (setRevealQuestion(false)) y la respuesta (setRevealAnswer(false)) en el visor. No reproduce el sonido (confirmado).
+
+FIX 5 — Idle con branding HyperX:
+- ContestViewer.tsx: nuevo componente SoundIdle — muestra el logo de HyperX (/hyperlogo.png) con pulso de opacidad, el texto "¿QUÉ TAN GAMER ERES?" (font-display italic, silver-grad, animación de opacidad) y "DEMUÉSTRALO CON HYPERX" (rojo grad, animación), más 5 puntos rojos pulsantes. Reemplaza el aburrido "Esperando sonido…" con Volume2 icon.
+- El idle se muestra cuando NO hay sonido activo, NO se pidió mostrar pregunta, y NO se reveló respuesta.
+
+Verificación con Agent Browser:
+- Idle: visor muestra logo HyperX + "¿QUÉ TAN GAMER ERES?" + "DEMUÉSTRALO CON HYPERX" + puntos pulsantes. ✅
+- Reproducir → "DE NUEVO" visible en admin. ✅
+- Mostrar → visor muestra "¿DE QUÉ VIDEOJUEMO ES ESTE SONIDO?" ✅
+- Ocultar → visor vuelve al idle HyperX ✅
+- Mostrar → Resuelta → visor vuelve al idle (pregunta oculta) ✅
+- Sin errores. Lint limpio. Dev server 200.
+
+Stage Summary:
+- Las ondas ahora vibran con el sonido real (Web Audio API AnalyserNode + canvas).
+- "Sonando" desaparece cuando el audio termina (soundActive local, no Firestore).
+- Mostrar/Ocultar funciona después de Reproducir (playSound ya no resetea revealQuestion).
+- Resuelta oculta la pregunta y la respuesta del visor al marcar.
+- Idle state con branding HyperX: logo + "¿Qué tan gamer eres? Demuéstralo con HyperX" + animación.
+- Archivos modificados: ContestViewer.tsx, SoundAdmin.tsx.
+
+---
+Task ID: 24
+Agent: Z.ai Code (main)
+Task: Si una pregunta está resuelta, bloquear Reproducir, Mostrar y Respuesta.
+
+Work Log:
+- SoundAdmin.tsx:
+  · playSound(sid, solved): ahora recibe `solved`. Si es true → toast.error "Esta pregunta ya está resuelta — no se puede reproducir" + return. No reproduce.
+  · toggleQuestion(sid, solved): si es true → toast.error "Esta pregunta ya está resuelta — no se puede mostrar" + return. No muestra la pregunta.
+  · Nueva función toggleAnswer(sid, solved): si es true → toast.error "Esta pregunta ya está resuelta — no se puede mostrar la respuesta" + return. Reemplaza el setRevealAnswer directo en el botón.
+  · toggleSolved: al marcar como resuelta, ahora también detiene el sonido (setSoundPlaying false) además de ocultar pregunta y respuesta.
+  · Los 3 botones (Mostrar, Reproducir, Respuesta) ahora tienen `disabled={isSolved}` → se atenúan visualmente (opacity-30, cursor-not-allowed) y no responden al click. Solo el botón "Resuelta" queda habilitado para poder desmarcar.
+  · Los tooltips cambian a "Pregunta resuelta — bloqueada" cuando está deshabilitado.
+
+Verificación con Agent Browser:
+- Pregunta resuelta: Mostrar [disabled], De nuevo [disabled], Respuesta [disabled], Resuelta [habilitado]. ✅
+- Desmarcar Resuelta: Mostrar [habilitado], De nuevo [habilitado], Respuesta [habilitado]. Badge "RESUELTA" desaparece. ✅
+- Sin errores. Lint limpio. Dev server 200.
+
+Stage Summary:
+- Cuando una pregunta está marcada como resuelta, los botones Reproducir, Mostrar y Respuesta se deshabilitan (atenúan visualmente + no responden al click). Solo el botón Resuelta queda activo para poder desmarcarla.
+- Al marcar como resuelta: se detiene el sonido, se ocultan pregunta y respuesta del visor.
+- Archivo modificado: SoundAdmin.tsx.
+
+---
+Task ID: 25
+Agent: Z.ai Code (main)
+Task: Estandarizar botones a "En vivo" + modal de Forzar transmisión (saltar entre torneo/concurso).
+
+Work Log:
+
+RENOMBRADO DE BOTONES:
+- LiveAdminView: "Abrir torneo" → "En vivo". "Cerrar torneo" se mantiene.
+- CosplayAdmin: "Abrir en visor" → "En vivo". "Cerrar visor" → "Cerrar".
+- SoundAdmin: "Abrir en visor" → "En vivo". "Cerrar visor" → "Cerrar".
+
+MODAL DE FORZAR TRANSMISIÓN:
+- activeTournament.ts: openTournament(tid, name, force=false) y openContest(contestId, force=false) ahora aceptan un parámetro `force`. Si force=true, sobreescriben la transmisión activa sin validar. Nueva función getActiveInfo() devuelve { tid, contestId, openedAt } en una sola consulta.
+- LiveAdminView: al hacer clic en "En vivo", consulta getActiveInfo(). Si hay otra transmisión activa (otro torneo o un concurso), abre un modal "Ya hay una transmisión activa" que muestra el nombre del bloqueante y dos botones: "Cancelar" y "Forzar transmisión". Al forzar → openTournament(tid, name, true) + toast "Transmisión forzada".
+- CosplayAdmin + SoundAdmin: mismo patrón. Al hacer clic en "En vivo", si hay otra transmisión, abre el modal con el nombre del bloqueante. Al forzar → openContest(contestId, true).
+- Los nombres del bloqueante se resuelven buscando en allTournaments (useTournaments) y allContests (useContests).
+
+Verificación con Agent Browser:
+- Torneo admin: botón "EN VIVO" (antes "Abrir torneo"). ✅
+- Cosplay admin: botones "EN VIVO" + "CERRAR" (antes "Abrir en visor" + "Cerrar visor"). ✅
+- Sound admin: botones "EN VIVO" + "CERRAR" (antes "Abrir en visor" + "Cerrar visor"). ✅
+- Concurso en vivo → ir a torneo → clic "EN VIVO" → modal "YA HAY UNA TRANSMISIÓN ACTIVA" con "Actualmente se está transmitiendo: CONCURSO SONIDOS TEST" + botones "CANCELAR" / "FORZAR TRANSMISIÓN". ✅
+- Clic "FORZAR TRANSMISIÓN" → toast "Transmisión forzada — el visor ahora muestra este torneo". ✅
+- Sin errores. Lint limpio. Dev server 200.
+
+Stage Summary:
+- Botones estandarizados: "En vivo" para abrir transmisión, "Cerrar" para cerrarla.
+- Al intentar abrir una transmisión cuando ya hay otra activa, aparece un modal con el nombre de la transmisión bloqueante y opción de Cancelar o Forzar. Forzar cambia el visor inmediatamente al nuevo torneo/concurso.
+- Permite saltar de torneo a torneo, de torneo a concurso, o de concurso a torneo sin tener que cerrar primero.
+- Archivos modificados: activeTournament.ts, LiveAdminView.tsx, CosplayAdmin.tsx, SoundAdmin.tsx.

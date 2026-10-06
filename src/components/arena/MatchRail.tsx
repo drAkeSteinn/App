@@ -9,11 +9,17 @@ import { plannedPcs, pcsLabel } from "@/lib/pcs";
 
 /* ============================================================
    MatchRail — barra inferior de transmisión:
-   · Los 2 próximos matches ANCLADOS como cards grandes
-   · El resto de matches PROGRAMADOS (participantes ya definidos,
-     sin resultado) como mini-cards en una cinta con auto-avance
+   · Los 2 próximos matches ANCLADOS como cards GRANDES
+     (más altas y anchas que las del carrusel para darles
+     protagonismo). En 1v1 se disponen en vertical:
+        Player
+          VS
+        Player
+     En FFA (1v1v1v1) se apilan los 4 nicks.
+   · El resto de matches PROGRAMADOS como mini-cards en una
+     cinta con auto-avance (más compactas, nicks visibles).
    · NO se muestran matches con slots "Por definir" ni matches
-     ya completados con ganador
+     ya completados con ganador.
    ============================================================ */
 
 function useMinute() {
@@ -30,7 +36,7 @@ interface UpcomingInfo {
   round: string; // CUARTOS / OCTAVOS / SEMI / FINAL…
   num: number; // match dentro de la ronda
   tag: string;
-  parts: { name: string; score: number }[]; // participantes del match (2 o 4 en FFA)
+  parts: { name: string; score: number }[]; // 2 (1v1) o 4 (FFA)
   time: number;
   live: boolean;
   pcs: string; // PCs asignadas/planificadas, ej. "PC1 · PC2"
@@ -57,28 +63,11 @@ function relLabel(info: UpcomingInfo, minute: number): string {
   return `EN ${Math.floor(relMins / 60)}H ${relMins % 60}M`;
 }
 
-function TeamLine({ name, score, compact }: { name: string; score: number; compact?: boolean }) {
-  return (
-    <div className="flex items-center gap-1.5">
-      <span
-        className={`red-badge clip-badge ${compact ? "w-[19px] h-[14px]" : "w-[22px] h-[16px]"} shrink-0 flex items-center justify-center`}
-      >
-        <span className={`font-display italic leading-none pt-[1px] ${compact ? "text-[10px]" : "text-[11px]"}`}>{score}</span>
-      </span>
-      <span
-        className={`${compact ? "text-[10px]" : "text-[11px]"} font-extrabold uppercase tracking-wide truncate text-white`}
-      >
-        {name}
-      </span>
-    </div>
-  );
-}
-
-function RoundChip({ round }: { round: string }) {
+function RoundChip({ round, mini }: { round: string; mini?: boolean }) {
   const isFinal = round === "FINAL";
   return (
     <span
-      className={`clip-tag px-1.5 py-[2px] text-[8px] font-extrabold tracking-[0.16em] uppercase ${
+      className={`clip-tag ${mini ? "px-1 py-[1px] !text-[7px]" : "px-1.5 py-[2px] text-[8px]"} font-extrabold tracking-[0.16em] uppercase ${
         isFinal ? "bg-[#ffb830] text-[#141519]" : "bg-white/[0.08] text-[#ffb830] border border-[#ffb830]/30"
       }`}
     >
@@ -87,18 +76,61 @@ function RoundChip({ round }: { round: string }) {
   );
 }
 
-/* Card grande anclada (los 2 próximos) */
-function RailCard({ info, big }: { info: UpcomingInfo; big?: boolean }) {
-  const minute = useMinute();
+/* Divisor VS centrado con líneas — para el layout vertical 1v1 */
+function VsDivider({ mini }: { mini?: boolean }) {
   return (
-    <div className={`rail-card clip-card-sm flex items-stretch h-full ${big ? "w-[300px]" : "w-[270px]"} shrink-0`}>
+    <div className="flex items-center gap-1.5 px-1">
+      <span className="h-px flex-1 bg-[#e8102e]/35" aria-hidden />
+      <span
+        className={`font-display italic text-[#e8102e] leading-none ${
+          mini ? "text-[8px] tracking-[0.18em]" : "text-[9px] tracking-[0.24em]"
+        }`}
+      >
+        VS
+      </span>
+      <span className="h-px flex-1 bg-[#e8102e]/35" aria-hidden />
+    </div>
+  );
+}
+
+/* Línea de participante: badge de marcador + nick (una sola línea) */
+function TeamLine({ name, score, compact, live }: { name: string; score: number; compact?: boolean; live?: boolean }) {
+  return (
+    <div className="flex items-center gap-1.5 min-w-0">
+      <span
+        className={`red-badge clip-badge ${compact ? "w-[19px] h-[14px]" : "w-[22px] h-[16px]"} shrink-0 flex items-center justify-center`}
+      >
+        <span className={`font-display italic leading-none pt-[1px] ${compact ? "text-[10px]" : "text-[11px]"}`}>{score}</span>
+      </span>
+      <span
+        className={`${compact ? "text-[10px]" : "text-[11.5px]"} font-extrabold uppercase tracking-wide truncate ${
+          live ? "text-white" : "text-white"
+        }`}
+      >
+        {name}
+      </span>
+    </div>
+  );
+}
+
+/* Card GRANDE anclada (los 2 próximos / el match activo).
+   1v1 → vertical Player / VS / Player.  FFA → 4 nicks apilados. */
+function RailCard({ info }: { info: UpcomingInfo }) {
+  const minute = useMinute();
+  const ffa = info.parts.length > 2;
+  return (
+    <div
+      className={`rail-card clip-card-sm flex items-stretch h-full ${
+        ffa ? "w-[392px]" : "w-[356px]"
+      } shrink-0 ${info.live ? "ring-1 ring-[#e8102e]/55" : ""}`}
+    >
       {/* hora grande */}
-      <div className="w-[86px] shrink-0 bg-black/45 flex flex-col items-center justify-center gap-0.5 border-r border-white/8">
+      <div className="w-[88px] shrink-0 bg-black/45 flex flex-col items-center justify-center gap-0.5 border-r border-white/8">
         {info.live ? (
           <span className="text-[10px] font-extrabold tracking-[0.18em] text-[#ff2440] blink uppercase">● Vivo</span>
         ) : (
           <>
-            <CalendarClock size={10} className="text-[#e8102e]" />
+            <CalendarClock size={11} className="text-[#e8102e]" />
             <span className="rail-time text-[24px] leading-none tabular-nums">
               {fmtTime(info.time).replace(/\s?(a\.?m\.?|p\.?m\.?)/i, "")}
             </span>
@@ -109,7 +141,7 @@ function RailCard({ info, big }: { info: UpcomingInfo; big?: boolean }) {
         )}
       </div>
       {/* info del match */}
-      <div className="flex-1 min-w-0 flex flex-col justify-center px-3 py-2 gap-1">
+      <div className="flex-1 min-w-0 flex flex-col px-3 py-2 gap-1.5">
         <div className="flex items-center justify-between gap-2">
           <span className="flex items-center gap-1.5 min-w-0">
             <RoundChip round={info.round} />
@@ -134,27 +166,42 @@ function RailCard({ info, big }: { info: UpcomingInfo; big?: boolean }) {
             {relLabel(info, minute)}
           </span>
         </div>
-        <div className="space-y-[3px]">
-          {info.parts.map((p, i) => (
-            <TeamLine key={i} name={p.name} score={p.score} compact={info.parts.length > 2} />
-          ))}
-        </div>
+        {/* participantes */}
+        {ffa ? (
+          <div className="flex flex-col gap-[3px] flex-1 justify-center">
+            {info.parts.map((p, i) => (
+              <TeamLine key={i} name={p.name} score={p.score} compact live={info.live} />
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-[3px] flex-1 justify-center">
+            <TeamLine name={info.parts[0]?.name ?? "—"} score={info.parts[0]?.score ?? 0} live={info.live} />
+            <VsDivider />
+            <TeamLine name={info.parts[1]?.name ?? "—"} score={info.parts[1]?.score ?? 0} live={info.live} />
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-/* Mini card para la cinta del resto de matches */
+/* Mini card para la cinta del resto de matches — más compacta que la anclada.
+   1v1 → vertical Player / VS / Player.  FFA → 4 nicks apilados. */
 function MiniRailCard({ info }: { info: UpcomingInfo }) {
   const minute = useMinute();
+  const ffa = info.parts.length > 2;
   return (
-    <div className="rail-card clip-card-sm w-[214px] h-[64px] shrink-0 snap-start flex items-stretch">
-      <div className="w-[54px] shrink-0 bg-black/45 flex flex-col items-center justify-center gap-0.5 border-r border-white/8">
+    <div
+      className={`rail-card clip-card-sm ${ffa ? "w-[228px] h-[92px]" : "w-[208px] h-[80px]"} shrink-0 snap-start flex items-stretch ${
+        info.live ? "ring-1 ring-[#e8102e]/50" : ""
+      }`}
+    >
+      <div className="w-[56px] shrink-0 bg-black/45 flex flex-col items-center justify-center gap-0.5 border-r border-white/8">
         {info.live ? (
           <span className="text-[8px] font-extrabold tracking-[0.14em] text-[#ff2440] blink uppercase">● Vivo</span>
         ) : (
           <>
-            <span className="rail-time text-[17px] leading-none tabular-nums">
+            <span className="rail-time text-[16px] leading-none tabular-nums">
               {fmtTime(info.time).replace(/\s?(a\.?m\.?|p\.?m\.?)/i, "")}
             </span>
             <span className="text-[7px] font-extrabold tracking-[0.26em] text-[#8e919c]">
@@ -166,25 +213,36 @@ function MiniRailCard({ info }: { info: UpcomingInfo }) {
       <div className="flex-1 min-w-0 flex flex-col justify-center px-2.5 py-1.5 gap-[3px]">
         <div className="flex items-center justify-between gap-1.5">
           <span className="flex items-center gap-1 min-w-0">
-            <RoundChip round={info.round} />
-            <span className="text-[8px] font-extrabold text-[#8e919c]">M{info.num}</span>
+            <RoundChip round={info.round} mini />
+            <span className="text-[7.5px] font-extrabold text-[#8e919c]">M{info.num}</span>
           </span>
           <span
-            className={`text-[8px] font-extrabold tracking-[0.1em] uppercase whitespace-nowrap ${
+            className={`text-[7.5px] font-extrabold tracking-[0.1em] uppercase whitespace-nowrap ${
               info.live ? "text-[#ff2440] blink" : "text-[#ffb830]"
             }`}
           >
             {relLabel(info, minute)}
           </span>
         </div>
-        <div className="text-[10px] font-extrabold uppercase tracking-wide text-white truncate leading-tight">
-          {info.parts.map((p) => p.name).join(" vs ")}
-        </div>
-        {info.parts.some((p) => p.score > 0) ? (
-          <div className="text-[8.5px] font-extrabold text-[#8e919c] tabular-nums">
-            {info.parts.map((p) => p.score).join(" – ")}
+        {ffa ? (
+          <div className="flex flex-col gap-[2px]">
+            {info.parts.map((p, i) => (
+              <span key={i} className="text-[9px] font-extrabold uppercase tracking-wide text-white truncate leading-tight">
+                {p.name}
+              </span>
+            ))}
           </div>
-        ) : null}
+        ) : (
+          <div className="flex flex-col gap-[1px]">
+            <span className="text-[10px] font-extrabold uppercase tracking-wide text-white truncate leading-tight">
+              {info.parts[0]?.name ?? "—"}
+            </span>
+            <VsDivider mini />
+            <span className="text-[10px] font-extrabold uppercase tracking-wide text-white truncate leading-tight">
+              {info.parts[1]?.name ?? "—"}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -266,7 +324,7 @@ export function MatchRail({
   }
 
   return (
-    <footer className="relative z-20 shrink-0 h-[86px] border-t border-white/10 bg-black/78 backdrop-blur-sm flex items-stretch overflow-hidden">
+    <footer className="relative z-20 shrink-0 h-[120px] border-t border-white/10 bg-black/78 backdrop-blur-sm flex items-stretch overflow-hidden">
       {/* etiqueta lateral */}
       <div className="shrink-0 w-[46px] red-badge flex flex-col items-center justify-center gap-1.5 z-10">
         <Trophy size={14} />
@@ -275,10 +333,10 @@ export function MatchRail({
         </span>
       </div>
 
-      {/* cards ancladas */}
+      {/* cards ancladas (las 2 más próximas / el match activo) — más grandes */}
       {anchored.map((info) => (
         <div key={info.id} className="p-1.5 pl-2 flex items-stretch">
-          <RailCard info={info} big />
+          <RailCard info={info} />
         </div>
       ))}
 

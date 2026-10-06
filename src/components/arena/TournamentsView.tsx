@@ -7,6 +7,7 @@ import {
   Clock,
   Eye,
   Image as ImageIcon,
+  Music,
   Pencil,
   Plus,
   Timer,
@@ -21,6 +22,7 @@ import { MODALITY_LABEL, STATUS_LABEL, playersCapacity, teamSize } from "@/lib/t
 import { createTournament, deleteTournament, updateTournament, type TournamentInput } from "@/lib/actions";
 import { fmtDateLong, toLocalInputValue, fromLocalInputValue } from "@/lib/bracket";
 import { Btn, Confirm, EmptyState, Field, IconBtn, Modal, ModalityChip, Segmented, StatusChip, TextInput } from "./ui";
+import { SoundsConfig } from "./SoundsConfig";
 
 /* ============================================================
    Vista CONFIGURACIÓN — crear y administrar torneos
@@ -73,7 +75,7 @@ function TournamentForm({
   const [venue, setVenue] = useState(initial?.venue ?? "");
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const seatOptions = [2, 4, 8, 16, 32].map((s) => ({ value: s, label: `${s * teamSize(modality)} JUG` }));
+  const seatOptions = [2, 4, 8, 16, 32, 64].map((s) => ({ value: s, label: `${s * teamSize(modality)} JUG` }));
 
   const submit = () => {
     if (!name.trim()) {
@@ -316,12 +318,13 @@ export function TournamentsView({
   bankCounts: Record<string, number>;
   onGoRegister: (tid: string) => void;
   onGoLive: (tid: string) => void;
-  onOpenViewer: (tid: string) => void;
+  onOpenViewer: () => void;
 }) {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Tournament | null>(null);
   const [deleting, setDeleting] = useState<Tournament | null>(null);
   const [busy, setBusy] = useState(false);
+  const [soundsOpen, setSoundsOpen] = useState(false);
 
   const save = async (data: TournamentInput) => {
     setBusy(true);
@@ -353,16 +356,26 @@ export function TournamentsView({
             Crea y administra múltiples torneos · modalidad · brackets · banco de reservas
           </p>
         </div>
-        <Btn
-          variant="red"
-          onClick={() => {
-            setEditing(null);
-            setFormOpen(true);
-          }}
-        >
-          <Plus size={14} />
-          Nuevo torneo
-        </Btn>
+        <div className="flex items-center gap-2">
+          <Btn
+            variant="dark"
+            onClick={() => setSoundsOpen(true)}
+            title="Personalizar sonidos de la app"
+          >
+            <Music size={14} />
+            Sonidos
+          </Btn>
+          <Btn
+            variant="red"
+            onClick={() => {
+              setEditing(null);
+              setFormOpen(true);
+            }}
+          >
+            <Plus size={14} />
+            Nuevo torneo
+          </Btn>
+        </div>
       </div>
 
       {error ? (
@@ -404,7 +417,7 @@ export function TournamentsView({
               onDelete={() => setDeleting(t)}
               onRegister={() => onGoRegister(t.id)}
               onLive={() => onGoLive(t.id)}
-              onViewer={() => onOpenViewer(t.id)}
+              onViewer={() => onOpenViewer()}
             />
           ))}
         </div>
@@ -449,6 +462,8 @@ export function TournamentsView({
           }
         }}
       />
+
+      <SoundsConfig open={soundsOpen} onClose={() => setSoundsOpen(false)} />
     </div>
   );
 }

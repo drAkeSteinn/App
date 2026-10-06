@@ -1,8 +1,11 @@
 "use client";
 
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import type { Bracket, Match, Modality } from "@/lib/types";
 import { useBracket, useTournaments } from "@/lib/hooks";
+import { useActiveTournament } from "@/lib/activeTournament";
+import { useObsLayout, saveObsLayout, resetObsLayout, type ObsLayout, type CardPos } from "@/lib/obsLayout";
 import { pcForPlayer, pcGroups, pcsKey } from "@/lib/pcs";
 
 /* ============================================================
@@ -14,13 +17,12 @@ import { pcForPlayer, pcGroups, pcsKey } from "@/lib/pcs";
    · Fondo TRANSPARENTE y cards MÍNIMAS: únicamente la barra de cada
      jugador con su PC + nick + marcador (OBS compone el alfa sobre la
      escena). Sin recuadros de video, sin VS, sin adornos.
-   · Barras GRANDES (listas para OBS sin escalar) y siempre en el
-     mismo lugar según la modalidad:
-       1v1 → 2 zonas fijas (PC1·PC2 arriba, PC3·PC4 abajo), 1 barra por lado
-       2v2 → 1 zona fija, 2 barras por lado (PC1·PC2 vs PC3·PC4)
-       3v3 → 1 zona fija, 3 barras por lado (estaciones hasta PC3)
-       4v4 → 1 zona fija, 4 barras por lado (las 4 PCs)
-       1v1v1v1 (FFA) → 1 zona fija, cuadrícula 2×2 (mismo tamaño de card que 1v1)
+   · POSICIONES DRAGGABLES: el caster puede arrastrar cada card (PC1,
+     PC2, PC3, PC4) a la posición que quiera. Las posiciones se guardan
+     en Firestore (arena/obsLayout) y aplican a TODOS los torneos y
+     modalidades. Se editan con /?obs=1&edit=1.
+   · Si no hay posiciones guardadas, se usa el layout automático
+     (flex/grid centrado según la modalidad).
    · Solo se muestran los matches EN JUEGO. Al definirse un ganador, su
      barra lo resalta en dorado ~8 s y después la zona pasa a
      "ESPERANDO MATCH" hasta que otro match se marque en vivo.
@@ -63,7 +65,7 @@ function liveZoneMap(bracket: Bracket, modality: Modality): Map<string, ZoneStat
 }
 
 /* nick con auto-ajuste: si el texto no cabe, baja su font-size en vez de
-   truncarlo con “…” — así el nombre siempre se lee completo.
+   truncarlo con "…" — así el nombre siempre se lee completo.
    Se mide SIEMPRE al tamaño base (se resetea antes de medir) para evitar
    bucles, y se re-mide cuando termina de cargar la fuente (FOUT). */
 function ObsNick({ nick }: { nick: string }) {
@@ -114,40 +116,48 @@ function ObsNick({ nick }: { nick: string }) {
 
 /* ---------------- Card individual (barra: PC + nick + marcador) ---------------- */
 
+interface ObsCardData {
+  pc: string;
+  nick: string;
+  score: number;
+  isWinner: boolean;
+  isLoser: boolean;
+  empty: boolean;
+}
+
 function ObsCard({
+  data,
   barW,
-  pc,
-  nick,
-  score,
-  isWinner,
-  isLoser,
-  empty,
+  draggable,
+  onDragStart,
 }: {
+  data: ObsCardData;
   barW: string;
-  pc?: string | null;
-  nick?: string;
-  score?: number;
-  isWinner?: boolean;
-  isLoser?: boolean;
-  empty?: boolean;
+  draggable?: boolean;
+  onDragStart?: (pc: string) => void;
 }) {
   return (
     <div
-      className={`obs-card ${empty ? "" : "obs-enter"} ${isWinner ? "is-winner" : ""} ${isLoser ? "is-lose" : ""}`}
-      style={{ width: barW }}
+      className={`obs-card ${data.empty ? "" : "obs-enter"} ${data.isWinner ? "is-winner" : ""} ${data.isLoser ? "is-lose" : ""}`}
+      style={{
+        width: barW,
+        cursor: draggable ? "grab" : undefined,
+        pointerEvents: draggable ? "auto" : undefined,
+      }}
+      onPointerDown={draggable && !data.empty ? () => onDragStart?.(data.pc) : undefined}
     >
       {/* barra única: PC + nombre + marcador (sólida, para legibilidad) */}
-      <div className={`obs-bar ${empty ? "is-empty" : ""}`}>
-        {empty ? (
+      <div className={`obs-bar ${data.empty ? "is-empty" : ""}`}>
+        {data.empty ? (
           <span className="obs-wait">Esperando match</span>
         ) : (
           <>
             <span className="obs-pc" title="PC del escenario donde juega este jugador">
-              {pc ?? "—"}
+              {data.pc ?? "—"}
             </span>
-            <ObsNick nick={nick ?? ""} />
-            <span key={score} className="obs-score obs-score-pop">
-              {score ?? 0}
+            <ObsNick nick={data.nick ?? ""} />
+            <span key={data.score} className="obs-score obs-score-pop">
+              {data.score ?? 0}
             </span>
           </>
         )}
@@ -156,7 +166,14 @@ function ObsCard({
   );
 }
 
-/* ---------------- Zona de enfrentamiento (grupo de PCs) ---------------- */
+/* ---------------- Zona de enfrentamiento (grupo de PCs) — layout automático ---------------- */
+
+/** Ancho de cada barra según la modalidad (compartido entre layout
+    automático, editor y transmisión con layout personalizado → mismo
+    tamaño en todas partes). */
+function barWidthFor(modality: Modality): string {
+  return modality === 1 || modality === 5 ? "40vw" : modality === 2 ? "34vw" : modality === 3 ? "30vw" : "28vw";
+}
 
 function ObsZone({
   group,
@@ -177,9 +194,28 @@ function ObsZone({
   const slotCount = ffa ? Math.max(2, match?.slots.length || 4) : 2;
   const perSide = ffa ? 1 : modality; // barras por lado (1 en FFA, jugadores en equipos)
 
-  /* ancho de cada barra según la modalidad (por lado se apila en columna si es por equipos).
-     FFA en cuadrícula 2×2 → cada card tan grande como las de 1v1 */
-  const barW = ffa || modality === 1 ? "40vw" : modality === 2 ? "34vw" : modality === 3 ? "30vw" : "28vw";
+  const barW = barWidthFor(modality);
+
+  const buildCard = (slotIdx: number, memberIdx: number, mm: { pid: string; nick: string }): ObsCardData => {
+    const slot = match?.slots[slotIdx];
+    return {
+      pc: pcForPlayer(modality, pcs, slotIdx, memberIdx),
+      nick: mm.nick,
+      score: slot?.score ?? 0,
+      isWinner: winner === slotIdx,
+      isLoser: winner !== null && winner !== slotIdx,
+      empty: false,
+    };
+  };
+
+  const buildEmpty = (): ObsCardData => ({
+    pc: "",
+    nick: "",
+    score: 0,
+    isWinner: false,
+    isLoser: false,
+    empty: true,
+  });
 
   const side = (slotIdx: number) => {
     const slot = match?.slots[slotIdx];
@@ -188,7 +224,7 @@ function ObsZone({
       return (
         <div className={`obs-zone-side ${perSide > 1 ? "is-col" : ""}`}>
           {Array.from({ length: perSide }).map((_, i) => (
-            <ObsCard key={`ph${i}`} barW={barW} empty />
+            <ObsCard key={`ph${i}`} data={buildEmpty()} barW={barW} />
           ))}
         </div>
       );
@@ -197,15 +233,7 @@ function ObsZone({
     return (
       <div className={`obs-zone-side ${perSide > 1 ? "is-col" : ""}`}>
         {members.map((mm, i) => (
-          <ObsCard
-            key={`${mm.pid}-${i}`}
-            barW={barW}
-            pc={pcForPlayer(modality, pcs, slotIdx, i)}
-            nick={mm.nick}
-            score={slot.score}
-            isWinner={winner === slotIdx}
-            isLoser={winner !== null && winner !== slotIdx}
-          />
+          <ObsCard key={`${mm.pid}-${i}`} data={buildCard(slotIdx, i, mm)} barW={barW} />
         ))}
       </div>
     );
@@ -220,21 +248,49 @@ function ObsZone({
   );
 }
 
+/* ============================================================
+   Hook de drag — pointer events nativos (sin dependencias).
+   Devuelve la posición actual de la card que se está arrastrando.
+   ============================================================ */
+function useDragHandler() {
+  const [draggingPc, setDraggingPc] = useState<string | null>(null);
+  const [draftPos, setDraftPos] = useState<CardPos | null>(null);
+
+  useEffect(() => {
+    if (!draggingPc) return;
+    const onMove = (e: PointerEvent) => {
+      const x = (e.clientX / window.innerWidth) * 100;
+      const y = (e.clientY / window.innerHeight) * 100;
+      setDraftPos({ x: Math.max(0, Math.min(100, x)), y: Math.max(0, Math.min(100, y)) });
+    };
+    const onUp = () => {
+      setDraggingPc(null);
+      setDraftPos(null);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [draggingPc]);
+
+  return { draggingPc, draftPos, startDrag: setDraggingPc };
+}
+
 /* ============================================================ */
 
 export function ObsOverlay({ tid }: { tid: string | null }) {
   const { data: tournaments } = useTournaments();
+  const active = useActiveTournament();
+  const { layout: savedLayout } = useObsLayout();
 
-  /* Web GENERAL: si no viene ?t=, se resuelve el torneo ACTIVO solo —
-     en vivo → mix match → el más reciente. La URL de OBS nunca cambia. */
+  /* URL única (/?obs=1): si no viene ?t=, se resuelve el torneo ACTIVO
+     desde Firestore (arena/active). Solo puede haber uno activo a la vez. */
   const resolvedTid = useMemo(() => {
     if (tid) return tid;
-    const live = tournaments.find((t) => t.status === "live");
-    if (live) return live.id;
-    const mixing = tournaments.find((t) => t.status === "mixing");
-    if (mixing) return mixing.id;
-    return tournaments[tournaments.length - 1]?.id ?? null;
-  }, [tid, tournaments]);
+    return active.tid;
+  }, [tid, active.tid]);
 
   const tournament = useMemo(() => tournaments.find((t) => t.id === resolvedTid) ?? null, [tournaments, resolvedTid]);
   const { data: bracket } = useBracket(resolvedTid);
@@ -329,6 +385,100 @@ export function ObsOverlay({ tid }: { tid: string | null }) {
     });
   }, [bracket, modality, wins]);
 
+  /* todas las cards activas (PC + nick + score) aplanadas por PC,
+     para poder posicionarlas individualmente cuando hay layout guardado. */
+  const cardsByPc = useMemo(() => {
+    const map = new Map<string, ObsCardData>();
+    for (const z of zones) {
+      if (!z.state) continue;
+      const match = z.state.match;
+      const pcs = z.state.pcs;
+      const winner = match.status === "done" ? match.w : null;
+      match.slots.forEach((slot, slotIdx) => {
+        if (!slot.pid) return;
+        const members = slot.members.length ? slot.members : [{ pid: slot.pid, nick: slot.label }];
+        members.forEach((mm, memberIdx) => {
+          const pc = pcForPlayer(modality, pcs, slotIdx, memberIdx);
+          if (pc) {
+            map.set(pc, {
+              pc,
+              nick: mm.nick,
+              score: slot.score,
+              isWinner: winner === slotIdx,
+              isLoser: winner !== null && winner !== slotIdx,
+              empty: false,
+            });
+          }
+        });
+      });
+    }
+    return map;
+  }, [zones, modality]);
+
+  /* todas las PCs que aparecen en cualquier modalidad (para edición) */
+  const allPcs = useMemo(() => {
+    const set = new Set<string>();
+    pcGroups(modality).forEach((g) => g.forEach((pc) => set.add(pc)));
+    // también las del otro grupo si es 1v1
+    if (modality === 1) {
+      ["PC1", "PC2", "PC3", "PC4"].forEach((pc) => set.add(pc));
+    }
+    return [...set];
+  }, [modality]);
+
+  /* ----- MODO EDICIÓN: ?edit=1 — las cards son draggable ----- */
+  const [editMode, setEditMode] = useState(false);
+  useEffect(() => {
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      setEditMode(sp.get("edit") === "1");
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  /* draft local de posiciones (mientras se arrastra, antes de guardar) */
+  const [draftLayout, setDraftLayout] = useState<ObsLayout>(savedLayout);
+  useEffect(() => {
+    setDraftLayout(savedLayout);
+  }, [savedLayout]);
+
+  const { draggingPc, draftPos, startDrag } = useDragHandler();
+
+  /* mientras se arrastra una card, actualiza su posición en el draft */
+  useEffect(() => {
+    if (draggingPc && draftPos) {
+      setDraftLayout((prev) => ({ ...prev, [draggingPc]: draftPos }));
+    }
+  }, [draggingPc, draftPos]);
+
+  const hasCustomLayout = Object.keys(draftLayout).length > 0;
+
+  /* posiciones por defecto (layout automático) cuando no hay guardado */
+  const defaultPos = (pc: string): CardPos => {
+    const num = parseInt(pc.replace("PC", ""), 10);
+    // 1v1: PC1·PC2 arriba (fila 1), PC3·PC4 abajo (fila 2)
+    // equipos/FFA: las 4 PCs en columna izquierda
+    if (modality === 1) {
+      if (num === 1) return { x: 25, y: 38 };
+      if (num === 2) return { x: 75, y: 38 };
+      if (num === 3) return { x: 25, y: 62 };
+      return { x: 75, y: 62 };
+    }
+    // FFA: cuadrícula 2×2
+    if (modality === 5) {
+      if (num === 1) return { x: 25, y: 38 };
+      if (num === 2) return { x: 75, y: 38 };
+      if (num === 3) return { x: 25, y: 62 };
+      return { x: 75, y: 62 };
+    }
+    // equipos (2v2/3v3/4v4): columna izquierda, apiladas
+    const total = modality === 2 ? 2 : modality === 3 ? 3 : 4;
+    const idx = num - 1;
+    const step = 80 / total;
+    return { x: 30, y: 10 + step * idx + step / 2 };
+  };
+
   if (!resolvedTid) {
     return (
       <div className="obs-root obs-no-tournament" role="status">
@@ -382,6 +532,190 @@ export function ObsOverlay({ tid }: { tid: string | null }) {
             : "3.6vw",
   } as React.CSSProperties;
 
+  /* ===== MODO EDICIÓN ===== */
+  if (editMode) {
+    return (
+      <div
+        className="obs-root"
+        style={{ ...sizeVars, display: "block", pointerEvents: "auto", background: "#0d0d12" }}
+        role="application"
+        aria-label="Editor de posición de cards de OBS — arrastra las cards a la posición deseada"
+      >
+        {/* toolbar de edición */}
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 100,
+          display: "flex",
+          alignItems: "center",
+          gap: "16px",
+          padding: "10px 16px",
+          background: "rgba(7, 7, 8, 0.95)",
+          borderBottom: "1px solid rgba(255, 255, 255, 0.12)",
+        }}>
+          <span style={{
+            flex: 1,
+            fontSize: "13px",
+            fontWeight: 800,
+            letterSpacing: "0.14em",
+            textTransform: "uppercase",
+            color: "#ffb830",
+          }}>
+            Editor de cards OBS — arrastra cada card a su posición
+          </span>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button
+              type="button"
+              onClick={() => setDraftLayout({})}
+              title="Restablecer al layout automático (sin posiciones guardadas)"
+              style={{
+                padding: "8px 16px",
+                fontSize: "11px",
+                fontWeight: 800,
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+                border: "1px solid rgba(255, 255, 255, 0.2)",
+                background: "rgba(255, 255, 255, 0.05)",
+                color: "#c9cbd3",
+                cursor: "pointer",
+              }}
+            >
+              Reset
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                await saveObsLayout(draftLayout);
+                toast.success("Posiciones guardadas — se aplican a todos los torneos");
+                try {
+                  const url = new URL(window.location.href);
+                  url.searchParams.delete("edit");
+                  window.location.href = url.toString();
+                } catch {
+                  window.location.href = "/?obs=1";
+                }
+              }}
+              style={{
+                padding: "8px 16px",
+                fontSize: "11px",
+                fontWeight: 800,
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+                border: "1px solid #ff2440",
+                background: "linear-gradient(160deg, #ff2440, #a30d24)",
+                color: "#fff",
+                cursor: "pointer",
+              }}
+            >
+              Guardar posiciones
+            </button>
+          </div>
+        </div>
+        {/* cards editables — posición absoluta, draggable */}
+        {allPcs.map((pc) => {
+          const pos = draftLayout[pc] ?? defaultPos(pc);
+          const card = cardsByPc.get(pc);
+          const data: ObsCardData = card ?? {
+            pc,
+            nick: `Jugador ${pc}`,
+            score: 0,
+            isWinner: false,
+            isLoser: false,
+            empty: false,
+          };
+          return (
+            <div
+              key={pc}
+              className={draggingPc === pc ? "is-dragging" : ""}
+              style={{
+                position: "absolute",
+                left: `${pos.x}%`,
+                top: `${pos.y}%`,
+                transform: "translate(-50%, -50%)",
+                zIndex: draggingPc === pc ? 90 : 50,
+                filter: draggingPc === pc ? "brightness(1.2)" : undefined,
+              }}
+            >
+              <ObsCard
+                data={data}
+                barW={barWidthFor(modality)}
+                draggable
+                onDragStart={startDrag}
+              />
+              <span style={{
+                position: "absolute",
+                top: "-18px",
+                left: "50%",
+                transform: "translateX(-50%)",
+                fontSize: "10px",
+                fontWeight: 800,
+                letterSpacing: "0.18em",
+                textTransform: "uppercase",
+                color: "#ffb830",
+                background: "rgba(7, 7, 8, 0.8)",
+                padding: "2px 6px",
+                border: "1px solid rgba(255, 184, 48, 0.4)",
+                pointerEvents: "none",
+                whiteSpace: "nowrap",
+              }}>
+                {pc}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  /* ===== MODO TRANSMISIÓN — layout personalizado (cards posicionadas) ===== */
+  if (hasCustomLayout) {
+    return (
+      <div
+        className="obs-root"
+        style={{ ...sizeVars, display: "block", pointerEvents: "none" }}
+        role="img"
+        aria-label="Overlay OBS — barras con PC, nombre y marcador de los jugadores en juego"
+      >
+        {allPcs.map((pc) => {
+          /* si una PC no tiene posición guardada, usa la default para
+             que las 4 cards siempre se muestren. */
+          const pos = draftLayout[pc] ?? defaultPos(pc);
+          const card = cardsByPc.get(pc);
+          /* Si no hay match en juego para esta PC, mostramos la card
+             vacía con "Esperando match" — las 4 cards siempre visibles. */
+          const data: ObsCardData = card ?? {
+            pc,
+            nick: "",
+            score: 0,
+            isWinner: false,
+            isLoser: false,
+            empty: true,
+          };
+          return (
+            <div
+              key={pc}
+              style={{
+                position: "absolute",
+                left: `${pos.x}%`,
+                top: `${pos.y}%`,
+                transform: "translate(-50%, -50%)",
+                zIndex: 10,
+              }}
+            >
+              <ObsCard
+                data={data}
+                barW={barWidthFor(modality)}
+              />
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  /* ===== MODO TRANSMISIÓN — layout automático (sin posiciones guardadas) ===== */
   return (
     <div
       className="obs-root"
