@@ -15,12 +15,12 @@ import {
   Zap,
 } from "lucide-react";
 import { toast } from "sonner";
-import type { Bracket, Modality, Player, Tournament } from "@/lib/types";
+import type { Bracket, Player, Tournament } from "@/lib/types";
 import { MODALITY_LABEL, playersCapacity } from "@/lib/types";
-import { computeSchedule, matchTag, totalMatches } from "@/lib/bracket";
+import { computeSchedule, getPodium, matchTag, totalMatches } from "@/lib/bracket";
 import { computeBank } from "@/lib/bank";
-import { pcsForSide } from "@/lib/pcs";
-import { useArenaState } from "@/lib/arenaState";
+import { setShowPodium, useArenaState } from "@/lib/arenaState";
+import { useDramaCuts } from "@/lib/spotlight";
 import { useActiveTournament } from "@/lib/activeTournament";
 import { useBracket, usePlayers, useTournaments } from "@/lib/hooks";
 import { useSoundPlayer, type SoundEvent } from "@/lib/sounds";
@@ -33,8 +33,8 @@ import { MatchRail, hasRailMatches } from "./MatchRail";
 import { ScheduleOverlay } from "./ScheduleOverlay";
 import { RegistrationBroadcast } from "./RegistrationBroadcast";
 import { BankView } from "./BankView";
-import { MatchSpotlight, type SpotlightData } from "./MatchSpotlight";
-import { SubEnterOverlay, type SubEnterData } from "./SubEnterOverlay";
+import { MatchSpotlight } from "./MatchSpotlight";
+import { SubEnterOverlay } from "./SubEnterOverlay";
 
 /* ============================================================
    VISOR DE ESPECTADORES — transmisión del torneo
@@ -45,67 +45,6 @@ import { SubEnterOverlay, type SubEnterData } from "./SubEnterOverlay";
    ============================================================ */
 
 export type ViewerMode = "brackets" | "reg" | "bank";
-
-/* Detecta el primer evento "dramático" entre dos versiones del bracket:
-   match que pasa a DONE (ganador marcado o cambiado) o a LIVE (en juego).
-   Las PCs del match se leen del match actual (al poner en juego ya tienen
-   PCs asignadas) o del snapshot anterior (al definir ganador ya se liberaron). */
-function findSpotlightEvent(
-  cur: Bracket,
-  prev: Bracket,
-  winsNeeded: number,
-  modality: Modality
-): SpotlightData | null {
-  for (let r = 0; r < cur.rounds.length; r++) {
-    const round = cur.rounds[r];
-    for (let m = 0; m < round.length; m++) {
-      const match = round[m];
-      const old = prev.rounds[r]?.[m];
-      if (!match || !old || match.bye) continue;
-      const becameDone = match.status === "done" && old.status !== "done";
-      const winnerChanged = match.status === "done" && old.status === "done" && match.w !== old.w;
-      const becameLive = match.status === "live" && old.status !== "live";
-      if (becameDone || winnerChanged || becameLive) {
-        const pcs = match.pcs?.length ? match.pcs : old.pcs;
-        return {
-          id: `${match.id}-${match.status}-${match.w}-${Date.now()}`,
-          kind: match.status === "live" ? "live" : "win",
-          tag: matchTag(cur, r, m),
-          players: match.slots.map((s, i) => ({
-            name: s.label || "—",
-            score: s.score ?? 0,
-            pcs: pcsForSide(modality, pcs, i),
-          })),
-          winner: match.w,
-          winsNeeded,
-        };
-      }
-    }
-  }
-  // verificar también el match de 3er lugar
-  if (cur.thirdPlace && prev.thirdPlace) {
-    const tp = cur.thirdPlace;
-    const oldTp = prev.thirdPlace;
-    const becameDone = tp.status === "done" && oldTp.status !== "done";
-    const becameLive = tp.status === "live" && oldTp.status !== "live";
-    if (becameDone || becameLive) {
-      const pcs = tp.pcs?.length ? tp.pcs : oldTp.pcs;
-      return {
-        id: `${tp.id}-${tp.status}-${tp.w}-${Date.now()}`,
-        kind: tp.status === "live" ? "live" : "win",
-        tag: "3ER LUGAR",
-        players: tp.slots.map((s, i) => ({
-          name: s.label || "—",
-          score: s.score ?? 0,
-          pcs: pcsForSide(modality, pcs, i),
-        })),
-        winner: tp.w,
-        winsNeeded,
-      };
-    }
-  }
-  return null;
-}
 
 /* Fondo fotográfico del visor (Background.jpg) con veladura para legibilidad */
 function ShowBackground({ dim = 0 }: { dim?: number }) {
@@ -357,11 +296,6 @@ export function SpectatorView({ tid }: { tid: string | null }) {
   const status = tournament?.status ?? "open";
   const [override, setOverride] = useState<{ status: Tournament["status"]; mode: ViewerMode } | null>(null);
   const [revealCount, setRevealCount] = useState(0);
-  const [showPodium, setShowPodium] = useState(false);
-  const [spotlight, setSpotlight] = useState<SpotlightData | null>(null);
-  const [subEnter, setSubEnter] = useState<SubEnterData | null>(null);
-  const prevBracketRef = useRef<{ tid: string | null; bracket: Bracket } | null>(null);
-  const prevBankPickRef = useRef<{ id: number; slotPid: string | null } | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const ivRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const toRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -386,7 +320,7 @@ export function SpectatorView({ tid }: { tid: string | null }) {
      en cuanto se confirma/cancela (bankPick = null) regresa al modo base. */
   const arenaBankPick = arenaState?.bankPick ?? null;
   const forceBank =
-    !!arenaBankPick && (status === "live" || status === "mixing" || status === "finished");
+    !!arenaBankPick && (status === "live" || status === "mixing" || status === "stopped" || status === "finished");
   const mode: ViewerMode = forceBank ? "bank" : baseMode;
 
   /* sincroniza el modo en la URL para compartir la vista correcta */
@@ -417,7 +351,6 @@ export function SpectatorView({ tid }: { tid: string | null }) {
     if (status !== "mixing" || !bracket || mode !== "brackets") return;
     const r0 = requestAnimationFrame(() => {
       setRevealCount(0);
-      setShowPodium(false);
     });
     // el sonido de inicio del mix (mixLaunch) ya lo dispara el admin
     // al lanzar el mix — no duplicar aquí
@@ -441,49 +374,52 @@ export function SpectatorView({ tid }: { tid: string | null }) {
     };
   }, [status, bracket, totalSlots, mode]);
 
-  useEffect(() => {
-    // el podio se controla desde el admin (arenaState.showPodium)
-    // puede activarse en cualquier momento, no solo cuando el torneo está finished
-    if (arenaState?.showPodium) {
-      const r = requestAnimationFrame(() => {
-        setShowPodium(true);
-        playSound("tournamentFinish");
-      });
-      return () => cancelAnimationFrame(r);
-    }
-    const r = requestAnimationFrame(() => setShowPodium(false));
-    return () => cancelAnimationFrame(r);
-  }, [arenaState?.showPodium, playSound]);
+  /* ----- PODIO — controlado por el admin (arenaState.showPodium).
+     DOBLE SEGURIDAD anti-residual: la señal del admin se ignora si el
+     bracket actual NO tiene campeón real (p. ej. señal vieja en la base
+     de datos tras reiniciar el torneo, o al actualizar el visor).
+     Sin campeón → jamás se dibuja el podio, aunque el flag venga true. ----- */
+  const podiumFlag = arenaState?.showPodium ?? false;
+  const hasChampion = useMemo(() => {
+    if (!bracket) return false;
+    return !!getPodium(bracket).champion?.pid;
+  }, [bracket]);
+  const showPodium = podiumFlag && hasChampion;
 
-  /* ----- SPOTLIGHT: ganador marcado / match en juego → corte dramático.
-     Compara cada snapshot del bracket con el anterior; al detectar un match
-     que pasa a DONE (o cambia de ganador) o a LIVE, lanza el overlay. ----- */
+  /* sonido de celebración: solo en la transición oculto → visible */
+  const prevPodiumFlag = useRef(false);
   useEffect(() => {
-    const prev = prevBracketRef.current;
-    prevBracketRef.current = effectiveTid && bracket ? { tid: effectiveTid, bracket } : null;
-    if (!bracket || !prev || prev.tid !== effectiveTid || status !== "live") return;
-    const event = findSpotlightEvent(bracket, prev.bracket, tournament?.winsNeeded ?? 1, tournament?.modality ?? 1);
-    if (event) {
-      setSpotlight(event);
-      // reproducir sonido según el tipo de evento
-      if (event.kind === "win") {
-        playSound("winner");
-      } else if (event.kind === "live") {
-        playSound("matchLive");
-      }
-    }
-  }, [bracket, status, effectiveTid, tournament, playSound]);
+    if (podiumFlag && !prevPodiumFlag.current && hasChampion) playSound("tournamentFinish");
+    prevPodiumFlag.current = podiumFlag;
+  }, [podiumFlag, hasChampion, playSound]);
 
-  /* el corte se va solo tras 10 segundos (para ver bien quién ganó y qué
-     match está en juego) y regresa a los brackets */
+  /* ----- CORTES DRAMÁTICOS (spotlight VS/ganador + subEnter de reserva):
+     la detección vive en useDramaCuts (lib/spotlight.ts) y se COMPARTE con
+     el overlay de animaciones para OBS (/?obs=anims), así ambas vistas
+     reproducen exactamente las mismas animaciones.
+     Los SONIDOS sí son exclusivos del visor: el overlay de OBS es mudo
+     para no duplicar el audio de la transmisión. ----- */
+  const { spotlight, subEnter, dismissSpotlight, dismissSubEnter } = useDramaCuts({
+    tid: tournament ? effectiveTid : null,
+    bracket: bracket ?? null,
+    status,
+    winsNeeded: tournament?.winsNeeded ?? 1,
+    modality: tournament?.modality ?? 1,
+    bankPick: arenaState?.bankPick ?? null,
+  });
+
+  const lastSpotSoundId = useRef<string>("");
   useEffect(() => {
-    if (!spotlight) return;
-    const t = setTimeout(() => setSpotlight(null), 10_000);
-    return () => clearTimeout(t);
-  }, [spotlight]);
+    if (!spotlight || spotlight.id === lastSpotSoundId.current) return;
+    lastSpotSoundId.current = spotlight.id;
+    playSound(spotlight.kind === "win" ? "winner" : "matchLive");
+  }, [spotlight, playSound]);
 
   /* glitch sutil de toda la pantalla al disparar el corte (Web Animations API:
-     se re-dispara en cada evento sin renders extra; respeta prefers-reduced-motion) */
+     se re-dispara en cada evento sin renders extra; respeta prefers-reduced-motion).
+     OPTIMIZADO: 0.85s y solo translate3d — antes eran 1.9s con skewX, y el
+     skew de página completa + la duración duplicaban el costo de composición
+     del frame (la esencia del "golpe" se mantiene). */
   useEffect(() => {
     if (!spotlight) return;
     const el = rootRef.current;
@@ -491,77 +427,19 @@ export function SpectatorView({ tid }: { tid: string | null }) {
     const anim = el.animate(
       [
         { transform: "translate3d(0,0,0)" },
-        { transform: "translate3d(-3px,1px,0) skewX(-0.35deg)", offset: 0.08 },
-        { transform: "translate3d(3px,-2px,0) skewX(0.3deg)", offset: 0.16 },
-        { transform: "translate3d(-2px,2px,0)", offset: 0.24 },
-        { transform: "translate3d(2px,1px,0) skewX(0.22deg)", offset: 0.32 },
-        { transform: "translate3d(-1px,-1px,0)", offset: 0.4 },
-        { transform: "translate3d(0,0,0)", offset: 0.52 },
-        { transform: "translate3d(-2px,0,0) skewX(-0.18deg)", offset: 0.64 },
-        { transform: "translate3d(1px,1px,0)", offset: 0.78 },
-        { transform: "translate3d(-1px,0,0)", offset: 0.9 },
+        { transform: "translate3d(-3px,1px,0)", offset: 0.12 },
+        { transform: "translate3d(3px,-2px,0)", offset: 0.24 },
+        { transform: "translate3d(-2px,2px,0)", offset: 0.38 },
+        { transform: "translate3d(2px,-1px,0)", offset: 0.55 },
+        { transform: "translate3d(-1px,0,0)", offset: 0.75 },
         { transform: "translate3d(0,0,0)" },
       ],
-      { duration: 1900, easing: "linear" }
+      { duration: 850, easing: "ease-out" }
     );
     return () => {
       anim.cancel();
     };
   }, [spotlight]);
-
-  /* ref siempre fresca del bracket (para leer el estado más reciente dentro
-     de un setTimeout sin closure stalado) */
-  const bracketRef = useRef<Bracket | null>(null);
-  useEffect(() => {
-    bracketRef.current = bracket;
-  }, [bracket]);
-
-  /* ----- SUB-ENTER: cuando el admin confirma un reemplazo desde el banco,
-     el visor muestra la animación del reserva que entra al match.
-     Detección: al abrir el bankPick se snapshot el pid del slot; al cerrar
-     (bankPick → null) se compara. Si el pid cambió → confirmó (animación);
-     si es el mismo → canceló (nada). Un grace de 500ms deja llegar la
-     actualización del bracket por si el orden de onSnapshot se invierte. ----- */
-  useEffect(() => {
-    const pick = arenaBankPick;
-    if (pick) {
-      if (!prevBankPickRef.current || prevBankPickRef.current.id !== pick.id) {
-        const slotPid =
-          bracketRef.current?.rounds[pick.r]?.[pick.m]?.slots[pick.slotIdx]?.pid ?? null;
-        prevBankPickRef.current = {
-          r: pick.r,
-          m: pick.m,
-          slotIdx: pick.slotIdx,
-          id: pick.id,
-          slotPid,
-        };
-      }
-      return;
-    }
-    const prev = prevBankPickRef.current;
-    if (!prev) return;
-    prevBankPickRef.current = null;
-    const captured = prev;
-    const t = setTimeout(() => {
-      const b = bracketRef.current;
-      const curSlot = b?.rounds[captured.r]?.[captured.m]?.slots[captured.slotIdx];
-      const curPid = curSlot?.pid ?? null;
-      if (curPid && curPid !== captured.slotPid) {
-        const nick = curSlot?.label || curSlot?.members[0]?.nick || "—";
-        const isFinal = b ? captured.r === b.rounds.length - 1 : false;
-        const tag = isFinal ? "GRAN FINAL" : b ? matchTag(b, captured.r, captured.m) : "MATCH";
-        setSubEnter({ id: `${captured.id}-${Date.now()}`, nick, matchTag: tag });
-      }
-    }, 500);
-    return () => clearTimeout(t);
-  }, [arenaBankPick]);
-
-  /* la animación de entrada se descarta sola tras 4.5 s (o al hacer click) */
-  useEffect(() => {
-    if (!subEnter) return;
-    const t = setTimeout(() => setSubEnter(null), 4500);
-    return () => clearTimeout(t);
-  }, [subEnter]);
 
   /* ----- SONIDOS: el admin dispara una acción → el visor la reproduce
      para el público (arenaState.sound). mixPlace es interno del visor:
@@ -802,16 +680,25 @@ export function SpectatorView({ tid }: { tid: string | null }) {
           ) : null}
         </AnimatePresence>
 
-        {/* podio — cuando el admin lo activa (showPodium) */}
+        {/* podio — cuando el admin lo activa (showPodium) y hay campeón real.
+            Se muestra en cualquier modo del visor: es LA señal de celebración. */}
         <AnimatePresence>
-          {bracket && showPodium && mode === "brackets" ? (
-            <Podium key="podium" bracket={bracket} tournament={tournament} onClose={() => setShowPodium(false)} />
+          {bracket && showPodium ? (
+            <Podium
+              key="podium"
+              bracket={bracket}
+              tournament={tournament}
+              onClose={() => {
+                // ocultar aquí también apaga la señal del admin (sin residual)
+                if (tournament) setShowPodium(tournament.id, false).catch(() => {});
+              }}
+            />
           ) : null}
         </AnimatePresence>
 
-        {/* banner "Torneo detenido" cuando está finalizado sin podio */}
+        {/* banner "Torneo detenido" (pausa, NO finalizado) o "Torneo finalizado" */}
         <AnimatePresence>
-          {status === "finished" && !showPodium && mode === "brackets" ? (
+          {status === "stopped" && mode === "brackets" ? (
             <motion.div
               initial={{ y: 40, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
@@ -823,6 +710,19 @@ export function SpectatorView({ tid }: { tid: string | null }) {
                 Torneo detenido
               </span>
               <span className="w-2 h-2 bg-[#ffb830] blink" aria-hidden />
+            </motion.div>
+          ) : status === "finished" && !showPodium && mode === "brackets" ? (
+            <motion.div
+              initial={{ y: 40, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 40, opacity: 0 }}
+              className="relative z-20 shrink-0 border-t border-[#ffb830]/30 bg-[#171307]/90 flex items-center justify-center gap-2 py-2"
+            >
+              <Trophy size={12} className="text-[#ffb830]" aria-hidden />
+              <span className="text-[10px] font-extrabold tracking-[0.28em] uppercase text-[#ffb830]">
+                Torneo finalizado
+              </span>
+              <Trophy size={12} className="text-[#ffb830]" aria-hidden />
             </motion.div>
           ) : null}
         </AnimatePresence>
@@ -844,12 +744,12 @@ export function SpectatorView({ tid }: { tid: string | null }) {
 
       {/* corte dramático: ganador marcado / match en juego — 5 s y regresa a brackets */}
       <AnimatePresence>
-        {spotlight ? <MatchSpotlight key={spotlight.id} data={spotlight} onDone={() => setSpotlight(null)} /> : null}
+        {spotlight ? <MatchSpotlight key={spotlight.id} data={spotlight} onDone={dismissSpotlight} /> : null}
       </AnimatePresence>
 
       {/* animación de reserva entrando al bracket desde el banco */}
       <AnimatePresence>
-        {subEnter ? <SubEnterOverlay key={subEnter.id} data={subEnter} onDone={() => setSubEnter(null)} /> : null}
+        {subEnter ? <SubEnterOverlay key={subEnter.id} data={subEnter} onDone={dismissSubEnter} /> : null}
       </AnimatePresence>
 
       {/* banner de espera durante mixing */}
@@ -873,7 +773,7 @@ export function SpectatorView({ tid }: { tid: string | null }) {
       {/* pie: rail de próximos matches / ticker / barra vacía */}
       {railActive && bracket ? (
         <MatchRailFallback bracket={bracket} schedule={schedule} tournament={tournament} tickerItems={tickerItems} />
-      ) : status === "live" || status === "finished" ? (
+      ) : status === "live" || status === "stopped" || status === "finished" ? (
         <Ticker items={tickerItems} />
       ) : (
         <div className="relative shrink-0 h-10 border-t border-white/10 bg-black/70" />

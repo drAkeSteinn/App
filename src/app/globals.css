@@ -232,14 +232,17 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   box-shadow: 0 0 10px rgba(232, 16, 46, 0.8);
 }
 
-/* grain */
+/* grain — OPTIMIZADO: se quitó mix-blend-mode: overlay. El blend por-píxel
+   sobre una capa de pantalla completa obliga al navegador a recomponer TODA
+   la escena cada frame (costo invisible: el grano casi no se aprecia).
+   Con opacidad simple el grano se ve prácticamente igual y el compositor
+   lo trata como una capa estática más. */
 .noise::before {
   content: "";
   position: absolute;
   inset: 0;
   pointer-events: none;
-  opacity: 0.5;
-  mix-blend-mode: overlay;
+  opacity: 0.42;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.16'/%3E%3C/svg%3E");
 }
 .vignette::after {
@@ -496,12 +499,15 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   animation: beat 2.4s ease-in-out infinite;
 }
 
+/* OPTIMIZADO: antes animaba `top` (layout + paint de pantalla completa en
+   cada frame, infinito). Ahora la franja es estática (top: 0) y solo se
+   mueve con transform → 100% GPU-composited, sin layout ni repaint. */
 @keyframes scanline {
   0% {
-    top: -10%;
+    transform: translateY(-120px);
   }
   100% {
-    top: 110%;
+    transform: translateY(110vh);
   }
 }
 .scanline::before {
@@ -509,10 +515,12 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   position: absolute;
   left: 0;
   right: 0;
+  top: 0;
   height: 90px;
   background: linear-gradient(180deg, transparent, rgba(255, 36, 64, 0.08), transparent);
-  animation: scanline 7s linear infinite;
+  animation: scanline 8s linear infinite;
   pointer-events: none;
+  will-change: transform;
 }
 
 @keyframes flashWhite {
@@ -527,23 +535,27 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   animation: flashWhite 0.5s ease-out forwards;
 }
 
-@keyframes rollBlur {
+/* OPTIMIZADO (antes rollBlur): animar filter: blur() en un loop infinito
+   fuerza un repaint carísimo en cada frame sobre texto grande — uno de los
+   mayores consumidores de GPU/CPU del mix. Se conserva la esencia frenética
+   con un jitter de transform + opacity (solo composite, sin repaint). */
+@keyframes rollJitter {
   0% {
-    filter: blur(0px);
-    opacity: 1;
+    transform: translateY(-1px);
+    opacity: 0.62;
   }
   50% {
-    filter: blur(1.6px);
-    opacity: 0.55;
+    transform: translateY(1px);
+    opacity: 1;
   }
   100% {
-    filter: blur(0px);
-    opacity: 1;
+    transform: translateY(-1px);
+    opacity: 0.62;
   }
 }
 .rolling {
-  animation: rollBlur 0.16s linear infinite;
-  will-change: transform, filter;
+  animation: rollJitter 0.16s linear infinite;
+  will-change: transform, opacity;
 }
 
 /* ---------------- Bracket slot states ---------------- */
@@ -595,6 +607,53 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   background: linear-gradient(180deg, #fbf2dc 0%, #ecd9af 42%, #cdb88a 84%, #e0c89c 100%) !important;
 }
 
+/* ---------------- Cards de LUGARES (podio en los brackets) ----------------
+   ORO (1°) · PLATA (2°) · BRONCE (3°): las cards de los slots ganan el
+   metal de su posición final. Sin sombreado/gris para los places — el
+   metal ES la distinción y los ganadores llevan el protagonismo. */
+.slot-gold {
+  background: linear-gradient(180deg, #ffe9b0 0%, #ffc94d 38%, #d99312 82%, #f4b83f 100%) !important;
+  color: #241500 !important;
+  box-shadow: 0 0 30px rgba(255, 184, 48, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.65) !important;
+}
+.slot-silver {
+  background: linear-gradient(180deg, #fdfdfe 0%, #d4d6dc 45%, #9ea2ad 88%, #c7cad2 100%) !important;
+  color: #141519 !important;
+  box-shadow: 0 0 22px rgba(255, 255, 255, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.85) !important;
+}
+.slot-bronze {
+  background: linear-gradient(180deg, #f0b48c 0%, #cd7f45 45%, #94502a 88%, #b87138 100%) !important;
+  color: #2a1206 !important;
+  box-shadow: 0 0 22px rgba(205, 127, 69, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.4) !important;
+}
+/* nombre y miembros dentro de una card de metal: tinta oscura, legible */
+.slot-gold .metal-name,
+.slot-silver .metal-name,
+.slot-bronze .metal-name {
+  color: inherit !important;
+}
+.slot-gold .metal-sub,
+.slot-silver .metal-sub,
+.slot-bronze .metal-sub {
+  color: rgba(20, 18, 8, 0.62) !important;
+}
+/* chips de lugar sobre card de metal: fondo oscuro + texto del metal */
+.metal-chip {
+  background: rgba(10, 8, 4, 0.82) !important;
+  border: 1px solid rgba(255, 255, 255, 0.22) !important;
+}
+.metal-chip-gold { color: #ffd25e !important; }
+.metal-chip-silver { color: #eef0f4 !important; }
+.metal-chip-bronze { color: #f0b48c !important; }
+
+/* degradado dorado para TEXTO (banner de campeón) */
+.text-gold-grad {
+  background: linear-gradient(180deg, #fff3c4 0%, #ffd25e 38%, #e29a15 72%, #ffe193 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
 /* ---------------- Misc ---------------- */
 .tab-btn {
   position: relative;
@@ -604,6 +663,34 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   background: linear-gradient(160deg, var(--red-hot), var(--red-blood));
   color: #fff;
   box-shadow: 0 4px 18px rgba(232, 16, 46, 0.35);
+}
+
+/* ---------------- Header admin: lenguaje visual unificado ----------------
+   Todos los controles del header (tabs, selector de torneo, botones OBS/Visor)
+   comparten MISMA altura, tipografía y corte angular; se agrupan en dos
+   "docks" segmentados (navegación · salidas) para una distribución clara. */
+.hdr-ctl {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  transition: color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.hdr-dock {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  padding: 4px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.hdr-dock > .hdr-ctl {
+  height: 30px;
+  justify-content: center;
 }
 .field-input {
   background: rgba(255, 255, 255, 0.045);
@@ -775,8 +862,9 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
     border-color: rgba(255, 36, 64, 0.55);
   }
 }
+/* ciclo más lento: hay hasta 32 seats animando → menos repaints/seg */
 .seat-empty {
-  animation: seatAvailable 2.8s ease-in-out infinite;
+  animation: seatAvailable 4.2s ease-in-out infinite;
 }
 
 /* ---------------- Spotlight del visor ----------------
@@ -784,38 +872,32 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
    (SpectatorView) para poder re-dispararlo en cada evento sin renders.
    Aquí solo queda la entrada glitch de los nombres del overlay. */
 
-/* entrada con "corte" de glitch para los nombres del spotlight */
+/* entrada con "corte" de glitch para los nombres del spotlight.
+   OPTIMIZADA: clip-path NO se puede componer por GPU (repaint por frame
+   sobre texto gigante), así que se redujo de 6 a 4 pasos y de 0.55s a
+   0.38s — se acorta a la mitad la ventana de repaint conservando la
+   esencia del reveal entrecortado. Se quitó el translateX (menos trabajo
+   por keyframe; el corte visual lo da el clip-path). */
 @keyframes glitchIn {
   0% {
     clip-path: inset(0 0 84% 0);
-    transform: translateX(-7px);
     opacity: 0.15;
   }
-  15% {
-    clip-path: inset(46% 0 28% 0);
-    transform: translateX(6px);
+  30% {
+    clip-path: inset(46% 0 26% 0);
     opacity: 1;
   }
-  32% {
-    clip-path: inset(4% 0 2% 0);
-    transform: translateX(-4px);
-  }
-  50% {
-    clip-path: inset(64% 0 6% 0);
-    transform: translateX(3px);
-  }
-  68% {
-    clip-path: inset(12% 0 58% 0);
-    transform: translateX(-2px);
+  62% {
+    clip-path: inset(10% 0 14% 0);
   }
   100% {
     clip-path: inset(0 0 0 0);
-    transform: translateX(0);
+    opacity: 1;
   }
 }
 .glitch-in {
-  animation: glitchIn 0.55s linear 1 both;
-  will-change: transform, opacity;
+  animation: glitchIn 0.38s linear 1 both;
+  will-change: clip-path, opacity;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -853,6 +935,23 @@ body.obs-mode::-webkit-scrollbar {
   color: rgba(255, 255, 255, 0.35);
   background: rgba(7, 7, 8, 0.55);
   padding: 10px 18px;
+}
+
+/* botón "Animaciones OBS" del header (carcasa oscura, acento dorado al hover) */
+.obs-anim-btn {
+  background: linear-gradient(160deg, #1b1b21, #0e0e12 55%, #17171c);
+  color: #fff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.09),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 2px 8px rgba(0, 0, 0, 0.45);
+}
+.obs-anim-btn:hover {
+  color: #ffd25e;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.09),
+    inset 0 0 0 1px rgba(255, 184, 48, 0.55),
+    0 2px 10px rgba(255, 184, 48, 0.22);
 }
 
 /* botón "Cards OBS" del header (carcasa oscura, acento rojo al hover) */

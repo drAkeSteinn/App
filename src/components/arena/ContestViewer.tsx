@@ -45,11 +45,18 @@ function CosplaySpotlight({
   useEffect(() => {
     if (!isWinner) return;
     const colors = ["#ffb830", "#ffe9b0", "#ffffff"];
-    confetti({ particleCount: 80, spread: 70, origin: { y: 0.5 }, colors, disableForReducedMotion: true });
+    /* OPTIMIZADO: 45 partículas (antes 80) y la ráfaga periódica es más
+       espaciada y SE DETIENE sola a los 10 s — el confetti mantiene su
+       propio canvas + rAF: el loop infinito consumía CPU constantemente */
+    confetti({ particleCount: 45, spread: 70, origin: { y: 0.5 }, colors, disableForReducedMotion: true });
     const iv = setInterval(() => {
-      confetti({ particleCount: 30, spread: 90, origin: { x: 0.2 + Math.random() * 0.6, y: 0.3 }, colors, disableForReducedMotion: true });
-    }, 1800);
-    return () => clearInterval(iv);
+      confetti({ particleCount: 16, spread: 90, origin: { x: 0.2 + Math.random() * 0.6, y: 0.3 }, colors, disableForReducedMotion: true });
+    }, 3200);
+    const stop = setTimeout(() => clearInterval(iv), 10_000);
+    return () => {
+      clearInterval(iv);
+      clearTimeout(stop);
+    };
   }, [isWinner]);
 
   return (
@@ -283,11 +290,18 @@ function LiveWaveform({ audioEl }: { audioEl: HTMLAudioElement | null }) {
 function SoundWinner({ nick, score }: { nick: string; score: number }) {
   useEffect(() => {
     const colors = ["#ffb830", "#ffe9b0", "#ffffff", "#ff2440"];
-    confetti({ particleCount: 90, spread: 75, origin: { y: 0.45 }, colors, disableForReducedMotion: true });
+    /* OPTIMIZADO: 50 partículas (antes 90), ráfagas más espaciadas y
+       auto-stop a los 10 s — la celebración se ve igual sin el costo
+       perpetuo de partículas */
+    confetti({ particleCount: 50, spread: 75, origin: { y: 0.45 }, colors, disableForReducedMotion: true });
     const iv = setInterval(() => {
-      confetti({ particleCount: 34, spread: 95, origin: { x: 0.15 + Math.random() * 0.7, y: 0.25 }, colors, disableForReducedMotion: true });
-    }, 1600);
-    return () => clearInterval(iv);
+      confetti({ particleCount: 16, spread: 95, origin: { x: 0.15 + Math.random() * 0.7, y: 0.25 }, colors, disableForReducedMotion: true });
+    }, 3200);
+    const stop = setTimeout(() => clearInterval(iv), 10_000);
+    return () => {
+      clearInterval(iv);
+      clearTimeout(stop);
+    };
   }, []);
 
   return (
@@ -313,12 +327,10 @@ function SoundWinner({ nick, score }: { nick: string; score: number }) {
         <span className="slashes w-24 h-9 inline-block" aria-hidden />
       </motion.div>
 
-      {/* trophy con pulso */}
-      <motion.div
-        animate={{ scale: [1, 1.12, 1], filter: ["brightness(1)", "brightness(1.3)", "brightness(1)"] }}
-        transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
-      >
-        <Trophy size={56} className="text-[#ffb830]" style={{ filter: "drop-shadow(0 0 26px rgba(255,184,48,0.7))" }} />
+      {/* trophy con pulso — OPTIMIZADO: solo scale (transform, GPU).
+          Antes animaba filter: brightness por frame = repaint constante */}
+      <motion.div animate={{ scale: [1, 1.12, 1] }} transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}>
+        <Trophy size={56} className="text-[#ffb830]" style={{ filter: "drop-shadow(0 0 14px rgba(255,184,48,0.65))" }} />
       </motion.div>
 
       {/* nick en GRANDE */}

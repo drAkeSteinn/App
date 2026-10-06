@@ -33,6 +33,9 @@ function SlotView({
   pool,
   showMembers,
   pcTag,
+  big = false,
+  place,
+  tone,
 }: {
   slot: MatchSlot;
   modality: number;
@@ -44,6 +47,13 @@ function SlotView({
   pool: string[];
   showMembers: boolean;
   pcTag?: string;
+  /** card GRANDE (Gran Final) */
+  big?: boolean;
+  /** etiqueta de posición cuando el match define lugares: "CAMPEÓN" | "2°" */
+  place?: string | null;
+  /** metal del lugar: ORO (1°) · PLATA (2°) · BRONCE (3°) — pinta la card
+      completa con el metal y anula el sombreado de perdedor */
+  tone?: "gold" | "silver" | "bronze" | null;
 }) {
   const prevReveal = useRef<RevealState>("hidden");
   const [flash, setFlash] = useState(false);
@@ -62,7 +72,7 @@ function SlotView({
 
   if (reveal === "hidden") {
     return (
-      <div className="slot-wrap h-[30px] mb-[3px] border border-dashed border-white/10 bg-black/30 flex items-center px-2">
+      <div className={`slot-wrap ${big ? "h-[40px]" : "h-[30px]"} mb-[3px] border border-dashed border-white/10 bg-black/30 flex items-center px-2`}>
         <span className="text-[9px] font-bold tracking-[0.3em] text-white/20 uppercase">·····</span>
       </div>
     );
@@ -70,7 +80,7 @@ function SlotView({
 
   if (!slot.pid) {
     return (
-      <div className="slot-wrap h-[30px] mb-[3px] border border-dashed border-white/15 bg-black/35 flex items-center gap-1.5 px-2">
+      <div className={`slot-wrap ${big ? "h-[40px]" : "h-[30px]"} mb-[3px] border border-dashed border-white/15 bg-black/35 flex items-center gap-1.5 px-2`}>
         <span className="w-1.5 h-1.5 bg-white/15" aria-hidden />
         <span className="text-[9px] font-extrabold tracking-[0.22em] text-white/30 uppercase">Por definir</span>
       </div>
@@ -78,12 +88,14 @@ function SlotView({
   }
 
   const cls = [
-    "slot-wrap plate relative h-[30px] mb-[3px] flex items-stretch overflow-hidden",
+    "slot-wrap plate relative mb-[3px] flex items-stretch overflow-hidden",
+    big ? "h-[40px]" : "h-[30px]",
     isDq ? "slot-dq" : "",
     slot.st === "rep" ? "slot-sub" : "",
-    isWinner ? "slot-winner" : "",
-    isLoser && !isDq ? "slot-loser" : "",
-    isLive && !isWinner && !isLoser ? "slot-live" : "",
+    tone === "gold" ? "slot-gold" : tone === "silver" ? "slot-silver" : tone === "bronze" ? "slot-bronze" : "",
+    isWinner && !tone ? "slot-winner" : "",
+    isLoser && !isDq && !tone ? "slot-loser" : "",
+    isLive && !isWinner && !isLoser && !tone ? "slot-live" : "",
     flash ? "lock-pop" : "",
   ]
     .filter(Boolean)
@@ -92,32 +104,58 @@ function SlotView({
   return (
     <div className={cls}>
       {/* marcador */}
-      <div className="red-badge clip-badge w-[34px] shrink-0 flex items-center justify-center">
-        <span className="font-display italic text-[15px] leading-none pt-[1px]">{slot.score}</span>
+      <div className={`red-badge clip-badge shrink-0 flex items-center justify-center ${big ? "w-[44px]" : "w-[34px]"}`}>
+        <span className={`font-display italic leading-none pt-[1px] ${big ? "text-[20px]" : "text-[15px]"}`}>{slot.score}</span>
       </div>
       {/* nombre + miembros */}
       <div className="flex-1 min-w-0 flex flex-col justify-center px-2 leading-none">
         {reveal === "rolling" ? (
-          <span className="text-[11px] font-extrabold uppercase tracking-wide text-[#e8102e] truncate">
+          <span className={`font-extrabold uppercase tracking-wide text-[#e8102e] truncate ${big ? "text-[15px]" : "text-[11px]"}`}>
             <RollingName pool={pool} />
           </span>
         ) : (
           <span
-            className={`text-[11px] font-extrabold uppercase tracking-wide truncate ${
-              isDq ? "text-[#ff9aa8] line-through" : ""
+            className={`font-extrabold uppercase tracking-wide truncate ${big ? "text-[14px]" : "text-[11px]"} ${
+              isDq ? "text-[#ff9aa8] line-through" : tone ? "metal-name" : ""
             }`}
           >
             {slot.label}
           </span>
         )}
         {showMembers && slot.members.length > 1 ? (
-          <span className={`text-[8.5px] font-bold truncate mt-[2px] ${isDq ? "text-[#ff8095]/70" : "text-[#5a5d68]"}`}>
+          <span className={`font-bold truncate mt-[2px] ${big ? "text-[10px]" : "text-[8.5px]"} ${isDq ? "text-[#ff8095]/70" : tone ? "metal-sub" : "text-[#5a5d68]"}`}>
             {slot.members.map((mm) => (mm.dq ? `✗${mm.nick}` : mm.nick)).join(" · ")}
           </span>
         ) : null}
       </div>
+      {/* chip de posición/avance: en la final se muestran los LUGARES
+          (CAMPEÓN / 2°) con su metal; el resto de rondas mantiene "PASA" */}
       {isWinner ? (
-        <span className="plate-gold chip clip-tag self-center mr-1.5 text-[8px] px-1.5 py-[2px] tracking-[0.1em]">PASA</span>
+        place === "CAMPEÓN" ? (
+          <span
+            title="Campeón del torneo"
+            className={`chip clip-tag self-center mr-1.5 shrink-0 font-extrabold tracking-[0.1em] uppercase ${
+              tone === "gold"
+                ? "metal-chip metal-chip-gold"
+                : "bg-[linear-gradient(160deg,#ffe9b0,#ffc94d_55%,#d99312)] text-[#241500] shadow-[0_0_16px_rgba(255,184,48,0.5)]"
+            } ${big ? "text-[10px] px-2 py-[3px]" : "text-[8px] px-1.5 py-[2px]"}`}
+          >
+            🏆 Campeón
+          </span>
+        ) : (
+          <span className={`plate-gold chip clip-tag self-center mr-1.5 font-extrabold tracking-[0.1em] ${big ? "text-[9px] px-2 py-[3px]" : "text-[8px] px-1.5 py-[2px]"}`}>PASA</span>
+        )
+      ) : isLoser && place === "2°" && !isDq ? (
+        <span
+          title="Subcampeón"
+          className={`chip clip-tag self-center mr-1.5 shrink-0 font-extrabold tracking-[0.1em] uppercase ${
+            tone === "silver"
+              ? "metal-chip metal-chip-silver"
+              : "bg-[linear-gradient(160deg,#fdfdfe,#d4d6dc_55%,#9ea2ad)] text-[#141519]"
+          } ${big ? "text-[10px] px-2 py-[3px]" : "text-[8px] px-1.5 py-[2px]"}`}
+        >
+          2°
+        </span>
       ) : null}
       {pcTag ? (
         <span
@@ -155,6 +193,7 @@ export function MatchCard({
   reveal = [],
   pool = [],
   showTimes = true,
+  big = false,
 }: {
   bracket: Bracket;
   r: number;
@@ -167,6 +206,8 @@ export function MatchCard({
   reveal?: RevealState[];
   pool?: string[];
   showTimes?: boolean;
+  /** card GRANDE con protagonismo extra — usada en la Gran Final */
+  big?: boolean;
 }) {
   const match: Match = bracket.rounds[r][m];
   const isFinal = bracket.rounds.length === r + 1;
@@ -204,14 +245,14 @@ export function MatchCard({
   const body = (
     <div
       className="w-[var(--cw)] select-none"
-      style={{ width: "var(--cw)" }}
+      style={{ width: big ? 320 : "var(--cw)" }}
       role={mode === "admin" ? "button" : undefined}
       aria-label={mode === "admin" ? `Seleccionar ${matchTag(bracket, r, m)}` : undefined}
     >
       {/* fila superior: tag + PCs + hora */}
-      <div className="flex items-center justify-between mb-[5px] px-[1px] h-[14px]">
+      <div className={`flex items-center justify-between mb-[5px] px-[1px] ${big ? "h-[18px]" : "h-[14px]"}`}>
         <span
-          className={`text-[8.5px] font-extrabold uppercase tracking-[0.18em] whitespace-nowrap ${
+          className={`font-extrabold uppercase whitespace-nowrap ${big ? "text-[11px] tracking-[0.22em]" : "text-[8.5px] tracking-[0.18em]"} ${
             isFinal ? "text-[#ff2440]" : "text-[#8e919c]"
           }`}
         >
@@ -221,19 +262,19 @@ export function MatchCard({
           {pcsStr && !match.bye && !bothEmpty ? (
             <span
               title={live ? "PCs del escenario — match en juego" : "PCs planificadas para este match"}
-              className={`flex items-center gap-[3px] text-[9px] font-extrabold tracking-[0.06em] uppercase tabular-nums whitespace-nowrap ${
+              className={`flex items-center gap-[3px] font-extrabold tracking-[0.06em] uppercase tabular-nums whitespace-nowrap ${big ? "text-[10px]" : "text-[9px]"} ${
                 live ? "text-[#ff2440]" : "text-[#a9adb8]"
               }`}
             >
-              <Monitor size={9} />
+              <Monitor size={big ? 11 : 9} />
               {pcsStr.replace(/\s·\s/g, "·")}
             </span>
           ) : null}
           {live ? (
-            <span className="text-[8.5px] font-extrabold tracking-[0.2em] text-[#ff2440] blink uppercase">● En juego</span>
+            <span className={`font-extrabold tracking-[0.2em] text-[#ff2440] blink uppercase ${big ? "text-[10px]" : "text-[8.5px]"}`}>● En juego</span>
           ) : showTimes && scheduledStart && !match.bye && !bothEmpty ? (
-            <span className="flex items-center gap-1 text-[8.5px] font-bold tracking-[0.08em] text-[#a9adb8] tabular-nums">
-              <Clock size={8} />
+            <span className={`flex items-center gap-1 font-bold tracking-[0.08em] text-[#a9adb8] tabular-nums ${big ? "text-[10px]" : "text-[8.5px]"}`}>
+              <Clock size={big ? 10 : 8} />
               {fmtTime(scheduledStart)}
             </span>
           ) : null}
@@ -241,21 +282,29 @@ export function MatchCard({
       </div>
 
       {/* slots */}
-      {match.slots.map((s, i) => (
-        <SlotView
-          key={i}
-          slot={s}
-          modality={modality}
-          isWinner={done && match.w === i && !!s.pid}
-          isLoser={done && match.w !== i && !!s.pid}
-          isDq={s.st === "dq"}
-          isLive={live}
-          reveal={rv(i)}
-          pool={pool}
-          showMembers={modality > 1}
-          pcTag={states[i] === "locked" && s.pid ? sidePcs[i] || undefined : undefined}
-        />
-      ))}
+      {match.slots.map((s, i) => {
+        const wonFinal = isFinal && done && match.w !== null && s.pid;
+        return (
+          <SlotView
+            key={i}
+            slot={s}
+            modality={modality}
+            isWinner={done && match.w === i && !!s.pid}
+            isLoser={done && match.w !== i && !!s.pid}
+            isDq={s.st === "dq"}
+            isLive={live}
+            reveal={rv(i)}
+            pool={pool}
+            showMembers={modality > 1}
+            pcTag={states[i] === "locked" && s.pid ? sidePcs[i] || undefined : undefined}
+            big={big}
+            /* LUGARES en la final: ganador = CAMPEÓN (ORO), perdedor = 2° (PLATA).
+               El metal pinta la card completa — sin sombreado para el 2°. */
+            place={wonFinal ? (match.w === i ? "CAMPEÓN" : "2°") : null}
+            tone={wonFinal ? (match.w === i ? "gold" : "silver") : null}
+          />
+        );
+      })}
 
       {/* flash al ganar */}
       {winFlash ? (

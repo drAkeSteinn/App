@@ -36,9 +36,11 @@ function MatchCard({ row }: { row: Row }) {
           : "border-white/15 bg-black/40"
       }`}
     >
-      {/* header: M# + hora */}
+      {/* header: M# (o ★ para los matches estelares) + hora */}
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[13px] font-extrabold tracking-[0.18em] uppercase text-[#ffb830]">M{row.num}</span>
+        <span className="text-[13px] font-extrabold tracking-[0.18em] uppercase text-[#ffb830]">
+          {row.num > 0 ? `M${row.num}` : "★"}
+        </span>
         {live ? (
           <span className="text-[12px] font-extrabold tracking-[0.14em] text-[#ff2440] blink uppercase">● Ahora</span>
         ) : row.time ? (
@@ -117,26 +119,46 @@ export function ScheduleOverlay({
   open: boolean;
   onClose: () => void;
 }) {
-  /* Solo matches PENDIENTES (ready o live) con participantes
-     definidos (al menos 2 slots reales). Los finalizados (done)
-     y los que aún no tienen participantes definidos se ocultan. */
+  /* Matches PENDIENTES (ready o live) agrupados por ronda.
+     · La Gran Final y el 3er lugar SIEMPRE se muestran aunque sus
+       participantes estén "Por definir" — son los matches estelares y
+       el público debe ver su hora desde el inicio.
+     · El resto se oculta si aún no tiene participantes definidos. */
   const groups = useMemo<{ name: string; rows: Row[] }[]>(() => {
     const map = new Map<string, Row[]>();
+    const R = bracket.rounds.length;
     bracket.rounds.forEach((round, r) => {
       const list: Row[] = [];
       round.forEach((match, m) => {
         if (match.bye) return;
         if (match.status === "done") return; // ocultar finalizados
         const realSlots = match.slots.filter((s) => s.pid);
-        if (realSlots.length < 2) return; // ocultar sin definir
+        const isHeadline = r === R - 1;
+        if (!isHeadline && realSlots.length < 2) return; // ocultar sin definir
         list.push({
           id: match.id,
-          num: m + 1,
-          parts: match.slots.map((s) => ({ name: s.label || "—", score: s.score })),
+          num: isHeadline ? 0 : m + 1,
+          parts: match.slots.map((s) => ({ name: s.pid ? s.label || "—" : "Por definir", score: s.score })),
           time: schedule.get(match.id) ?? null,
           status: match.status === "live" ? "live" : "ready",
         });
       });
+      /* el 3er lugar se juega ANTES de la Gran Final → su grupo va primero */
+      if (r === R - 1 && bracket.thirdPlace) {
+        const tp = bracket.thirdPlace;
+        if (tp.status !== "done" && schedule.get(tp.id)) {
+          const list2: Row[] = [
+            {
+              id: tp.id,
+              num: 0,
+              parts: tp.slots.map((s) => ({ name: s.pid ? s.label || "—" : "Por definir", score: s.score })),
+              time: schedule.get(tp.id) ?? null,
+              status: tp.status === "live" ? "live" : "ready",
+            },
+          ];
+          map.set("3ER LUGAR", list2);
+        }
+      }
       if (list.length > 0) {
         map.set(roundLabel(bracket, r), list);
       }

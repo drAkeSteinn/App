@@ -42,19 +42,22 @@ interface UpcomingInfo {
   pcs: string; // PCs asignadas/planificadas, ej. "PC1 · PC2"
 }
 
-/** ¿Hay al menos un match elegible para el rail? (incluye thirdPlace) */
+/** ¿Hay al menos un match elegible para el rail? (incluye 3er lugar y
+    final aunque tengan participantes "Por definir") */
 export function hasRailMatches(bracket: Bracket, schedule: Map<string, number>): boolean {
-  for (const round of bracket.rounds) {
-    for (const match of round) {
+  const R = bracket.rounds.length;
+  for (let r = 0; r < bracket.rounds.length; r++) {
+    for (const match of bracket.rounds[r]) {
       if (match.bye || match.status === "done") continue;
       if (!schedule.get(match.id)) continue;
+      if (r === R - 1) return true; // la final siempre aparece
       if (!matchPlayable(match)) continue;
       return true;
     }
   }
   if (bracket.thirdPlace) {
     const tp = bracket.thirdPlace;
-    if (tp.status !== "done" && schedule.get(tp.id) && matchPlayable(tp)) return true;
+    if (tp.status !== "done" && schedule.get(tp.id)) return true;
   }
   return false;
 }
@@ -69,10 +72,15 @@ function relLabel(info: UpcomingInfo, minute: number): string {
 
 function RoundChip({ round, mini }: { round: string; mini?: boolean }) {
   const isFinal = round === "FINAL";
+  const isThird = round === "3ER";
   return (
     <span
       className={`clip-tag ${mini ? "px-1 py-[1px] !text-[7px]" : "px-1.5 py-[2px] text-[8px]"} font-extrabold tracking-[0.16em] uppercase ${
-        isFinal ? "bg-[#ffb830] text-[#141519]" : "bg-white/[0.08] text-[#ffb830] border border-[#ffb830]/30"
+        isFinal
+          ? "bg-[#ffb830] text-[#141519]"
+          : isThird
+            ? "bg-[#cd7f45]/15 text-[#cd7f45] border border-[#cd7f45]/40"
+            : "bg-white/[0.08] text-[#ffb830] border border-[#ffb830]/30"
       }`}
     >
       {round}
@@ -149,7 +157,9 @@ function RailCard({ info }: { info: UpcomingInfo }) {
         <div className="flex items-center justify-between gap-2">
           <span className="flex items-center gap-1.5 min-w-0">
             <RoundChip round={info.round} />
-            <span className="text-[8.5px] font-extrabold tracking-[0.14em] uppercase text-[#8e919c]">M{info.num}</span>
+            {info.num > 0 ? (
+              <span className="text-[8.5px] font-extrabold tracking-[0.14em] uppercase text-[#8e919c]">M{info.num}</span>
+            ) : null}
             {info.pcs ? (
               <span
                 className={`flex items-center gap-[3px] text-[8px] font-extrabold tracking-[0.08em] uppercase tabular-nums whitespace-nowrap ${
@@ -218,7 +228,7 @@ function MiniRailCard({ info }: { info: UpcomingInfo }) {
         <div className="flex items-center justify-between gap-1.5">
           <span className="flex items-center gap-1 min-w-0">
             <RoundChip round={info.round} mini />
-            <span className="text-[7.5px] font-extrabold text-[#8e919c]">M{info.num}</span>
+            {info.num > 0 ? <span className="text-[7.5px] font-extrabold text-[#8e919c]">M{info.num}</span> : null}
           </span>
           <span
             className={`text-[7.5px] font-extrabold tracking-[0.1em] uppercase whitespace-nowrap ${
@@ -268,35 +278,43 @@ export function MatchRail({
 
   const all = useMemo<UpcomingInfo[]>(() => {
     const out: UpcomingInfo[] = [];
+    const R = bracket.rounds.length;
+    const nameOf = (s: { pid: string | null; label: string }) =>
+      s.pid ? s.label || "—" : "Por definir";
     bracket.rounds.forEach((round, r) =>
       round.forEach((match, m) => {
         if (match.bye) return;
         const t = schedule.get(match.id);
         if (match.status === "done" || !t) return;
-        if (!matchPlayable(match)) return;
+        /* La Gran Final y el 3er lugar SIEMPRE se muestran (son los matches
+           estelares) aunque los participantes aún estén "Por definir" — así
+           el público ve su hora desde el inicio. El resto exige ≥2 definidos. */
+        const isHeadline = r === R - 1;
+        if (!isHeadline && !matchPlayable(match)) return;
         out.push({
           id: match.id,
           round: roundShortLabel(bracket, r),
-          num: m + 1,
+          num: isHeadline ? 0 : m + 1,
           tag: matchTag(bracket, r, m),
-          parts: match.slots.map((s) => ({ name: s.label || "—", score: s.score })),
+          parts: match.slots.map((s) => ({ name: nameOf(s), score: s.score })),
           time: t,
           live: match.status === "live",
           pcs: pcsLabel(pcsMap.get(match.id)),
         });
       })
     );
-    // incluir el match de 3er lugar si existe y es jugable
+    // incluir el match de 3er lugar: se juega antes de la final y su hora
+    // debe verse siempre (aunque aún tenga lugares "Por definir")
     if (bracket.thirdPlace) {
       const tp = bracket.thirdPlace;
       const t = schedule.get(tp.id);
-      if (tp.status !== "done" && t && matchPlayable(tp)) {
+      if (tp.status !== "done" && t) {
         out.push({
           id: tp.id,
           round: "3ER",
-          num: 1,
+          num: 0,
           tag: "3ER LUGAR",
-          parts: tp.slots.map((s) => ({ name: s.label || "—", score: s.score })),
+          parts: tp.slots.map((s) => ({ name: nameOf(s), score: s.score })),
           time: t,
           live: tp.status === "live",
           pcs: pcsLabel(pcsMap.get(tp.id)),

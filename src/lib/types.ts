@@ -1,5 +1,8 @@
 export type Modality = 1 | 2 | 3 | 4 | 5; // 5 = "1v1v1v1" — FFA: 4 jugadores enfrentándose
-export type TournamentStatus = "open" | "closed" | "mixing" | "live" | "finished";
+/** · live: transmisión de matches en curso.
+    · stopped: detenido/pausado por el admin (NO es finalizado) — se reabre desde la fase 5.
+    · finished: torneo realmente terminado — solo cuando la Gran Final tiene ganador. */
+export type TournamentStatus = "open" | "closed" | "mixing" | "live" | "stopped" | "finished";
 export type SeatType = "off" | "bank";
 
 export interface Tournament {
@@ -104,6 +107,7 @@ export const STATUS_LABEL: Record<TournamentStatus, string> = {
   closed: "REGISTROS CERRADOS",
   mixing: "MIX MATCH",
   live: "EN VIVO",
+  stopped: "DETENIDO",
   finished: "FINALIZADO",
 };
 

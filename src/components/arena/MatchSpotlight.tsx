@@ -3,6 +3,11 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Monitor, Swords, Trophy, Zap } from "lucide-react";
+import type { SpotlightData, SpotlightPlayer } from "@/lib/spotlight";
+
+/* Los tipos viven en lib/spotlight.ts (compartidos con el overlay de
+   animaciones para OBS); se re-exportan por compatibilidad. */
+export type { SpotlightData, SpotlightPlayer } from "@/lib/spotlight";
 
 /* ============================================================
    MatchSpotlight — corte dramático del visor (transmisión).
@@ -16,22 +21,12 @@ import { Monitor, Swords, Trophy, Zap } from "lucide-react";
      pueden usar el espacio a izquierda/derecha y, si aún no caben,
      se escalan automáticamente sin partirse en dos renglones.
    · FFA (1v1v1v1): los 4 jugadores se presentan en una cuadrícula 2×2.
+   · Modo `transparent`: variante para el overlay de OBS (/?obs=anims) —
+     fondo con velo suave (no opaco) para que OBS componga la escena.
+   · OPTIMIZADO: los drop-shadow grandes (26–44px) se redujeron — el
+     blur de filter se re-rasteriza en cada frame de las springs y era
+     invisible en la transmisión, pero costaba mucho GPU.
    ============================================================ */
-
-export interface SpotlightPlayer {
-  name: string;
-  score: number;
-  pcs: string[]; // PCs del lado (ej. ["PC1"])
-}
-
-export interface SpotlightData {
-  id: string; // clave única del evento (para re-disparar animaciones)
-  kind: "win" | "live";
-  tag: string; // "SEMI · M2" | "GRAN FINAL"
-  players: SpotlightPlayer[];
-  winner: number | null; // índice del slot ganador (kind "win")
-  winsNeeded: number;
-}
 
 /** Escala su contenido (nowrap) para que SIEMPRE quepa en una línea. */
 export function FitLine({
@@ -132,7 +127,7 @@ function Side({
         <span
           className={`font-display italic uppercase leading-[0.95] whitespace-nowrap glitch-in ${
             isWin
-              ? "text-silver-grad drop-shadow-[0_0_26px_rgba(232,16,46,0.6)]"
+              ? "text-silver-grad drop-shadow-[0_0_14px_rgba(232,16,46,0.55)]"
               : isLose
                 ? "text-[#5a5d66]"
                 : "text-silver-grad"
@@ -166,7 +161,15 @@ function Side({
   );
 }
 
-export function MatchSpotlight({ data, onDone }: { data: SpotlightData; onDone: () => void }) {
+export function MatchSpotlight({
+  data,
+  onDone,
+  transparent,
+}: {
+  data: SpotlightData;
+  onDone: () => void;
+  transparent?: boolean;
+}) {
   const win = data.kind === "win";
   const ffa = data.players.length > 2;
   const stateOf = (i: number): "win" | "lose" | "neutral" =>
@@ -185,8 +188,11 @@ export function MatchSpotlight({ data, onDone }: { data: SpotlightData; onDone: 
       aria-label={win ? "Ganador del match" : "Match en juego"}
       className="absolute inset-0 z-[60] flex flex-col items-center justify-center gap-7 sm:gap-10 px-5 sm:px-10 overflow-hidden cursor-pointer select-none"
       style={{
-        background:
-          "radial-gradient(95% 75% at 50% 45%, rgba(9,9,11,0.78) 0%, rgba(9,9,11,0.93) 58%, rgba(7,7,8,0.98) 100%)",
+        /* transparent: velo suave para OBS — el caster ve la escena detrás
+           y el texto sigue legible por el scrim central */
+        background: transparent
+          ? "radial-gradient(95% 75% at 50% 45%, rgba(7,7,8,0.55) 0%, rgba(7,7,8,0.3) 55%, rgba(7,7,8,0) 100%)"
+          : "radial-gradient(95% 75% at 50% 45%, rgba(9,9,11,0.78) 0%, rgba(9,9,11,0.93) 58%, rgba(7,7,8,0.98) 100%)",
       }}
     >
       {/* líneas de energía arriba/abajo */}
@@ -223,7 +229,7 @@ export function MatchSpotlight({ data, onDone }: { data: SpotlightData; onDone: 
             animate={{ scale: 1, opacity: 1, rotate: 0 }}
             transition={{ type: "spring", stiffness: 280, damping: 16, delay: 0.18 }}
             className="w-[110px] sm:w-[180px] lg:w-[225px] shrink-0"
-            style={{ filter: "drop-shadow(0 14px 44px rgba(232,16,46,0.45))" }}
+            style={{ filter: "drop-shadow(0 10px 20px rgba(232,16,46,0.4))" }}
           />
           <Side player={data.players[1]} state={stateOf(1)} side="right" showScore={showScores} />
         </div>

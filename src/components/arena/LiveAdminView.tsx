@@ -54,9 +54,11 @@ import {
   totalMatches,
 } from "@/lib/bracket";
 import {
+  closeRegistration,
   deleteBracket,
   disqualify,
   fillSeats,
+  finishTournament,
   launchMix,
   removeDemoPlayers,
   replaceFromBank,
@@ -68,6 +70,7 @@ import {
   setStartAt,
   setWinner,
   setStatus,
+  stopTournament,
 } from "@/lib/actions";
 import { closeBankPick, emitSound, openBankPick, setSchedOpen, setShowPodium, useArenaState } from "@/lib/arenaState";
 import { type SoundEvent } from "@/lib/sounds";
@@ -102,7 +105,7 @@ export function LiveAdminView({
 }) {
   const [sel, setSel] = useState<{ r: number; m: number } | null>(null);
   const [pickBank, setPickBank] = useState<{ r: number; m: number; slotIdx: number } | null>(null);
-  const [confirm, setConfirm] = useState<null | { kind: "remix" | "finish" | "wipe" | "reopen" | "results" | "fill" | "demos" }>(null);
+  const [confirm, setConfirm] = useState<null | { kind: "remix" | "finish" | "stop" | "wipe" | "reopen" | "results" | "fill" | "demos" }>(null);
   const [busy, setBusy] = useState(false);
   const [view, setView] = useState<AdminView>("tree");
   const [panelOpen, setPanelOpen] = useState(true);
@@ -117,6 +120,12 @@ export function LiveAdminView({
   const bankInfo = useMemo(() => computeBank(bracket, players), [bracket, players]);
   const arenaState = useArenaState(tournament?.id ?? null);
   const schedOpen = arenaState?.schedOpen ?? false;
+  /* estado real del podio en el visor — para el botón Mostrar/Ocultar podio */
+  const podiumOpen = arenaState?.showPodium ?? false;
+  const togglePodium = () => {
+    if (!tournament) return;
+    setShowPodium(tournament.id, !podiumOpen).catch(() => {});
+  };
   /** Emite la señal de sonido al visor. NO reproduce localmente en el admin
       para evitar duplicación — el visor es el único que debe sonar. */
   const fireSound = (event: SoundEvent) => {
@@ -304,6 +313,7 @@ export function LiveAdminView({
       <PhaseBar
         tournament={tournament}
         bracket={bracket}
+        players={players}
         participantsCount={participants.length}
         officialsCount={officialsCount}
         missingPlayers={missingPlayers}
@@ -315,6 +325,8 @@ export function LiveAdminView({
         guard={guard}
         onConfirm={(kind) => setConfirm({ kind })}
         onFireSound={fireSound}
+        podiumOpen={podiumOpen}
+        onTogglePodium={togglePodium}
         onLaunchMix={() =>
           guard(async () => {
             await launchMix(tournament.id, players, tournament);
@@ -574,10 +586,8 @@ export function LiveAdminView({
                   busy={busy}
                   stepMatch={stepMatch}
                   onSound={fireSound}
-                  onShowPodium={() => {
-                    if (tournament) setShowPodium(tournament.id, true).catch(() => {});
-                    toast.success("Podio activado en el visor");
-                  }}
+                  podiumOpen={podiumOpen}
+                  onTogglePodium={togglePodium}
                 />
               </div>
             </aside>
@@ -599,10 +609,8 @@ export function LiveAdminView({
               busy={busy}
               stepMatch={stepMatch}
               onSound={fireSound}
-              onShowPodium={() => {
-                if (tournament) setShowPodium(tournament.id, true).catch(() => {});
-                toast.success("Podio activado en el visor");
-              }}
+              podiumOpen={podiumOpen}
+              onTogglePodium={togglePodium}
             />
           </div>
 
@@ -717,16 +725,30 @@ export function LiveAdminView({
         }
       />
       <Confirm
-        open={confirm?.kind === "finish"}
+        open={confirm?.kind === "stop"}
         onClose={() => setConfirm(null)}
         confirmLabel="Detener"
         title="Detener torneo"
-        message="El visor mostrará 'Torneo detenido' sobre los brackets. Podrás reabrir el torneo cuando quieras."
+        message="El torneo se DETIENE (pausa): el visor mostrará 'Torneo detenido' sobre los brackets. NO se marca como finalizado — podrás reabrirlo desde la fase 5 del flujo cuando quieras."
         onConfirm={() =>
           tournament &&
           guard(async () => {
-            await setStatus(tournament.id, "finished");
-            toast.success("Torneo detenido — el visor muestra 'Torneo detenido'");
+            await stopTournament(tournament.id);
+            toast.success("Torneo detenido — reábrelo desde la fase 5 del flujo");
+          })
+        }
+      />
+      <Confirm
+        open={confirm?.kind === "finish"}
+        onClose={() => setConfirm(null)}
+        confirmLabel="Finalizar"
+        title="Finalizar torneo"
+        message="El torneo se marcará como FINALIZADO: la Gran Final está resuelta y el podio queda definido (campeón, subcampeón y 3er lugar). Solo es posible cuando la Gran Final ya tiene ganador."
+        onConfirm={() =>
+          tournament &&
+          guard(async () => {
+            await finishTournament(tournament.id, bracket);
+            toast.success("Torneo finalizado — ya puedes mostrar el podio");
           })
         }
       />
@@ -736,7 +758,7 @@ export function LiveAdminView({
         danger
         confirmLabel="Reiniciar marcadores"
         title="Reiniciar marcadores del torneo"
-        message="Se limpiarán todos los marcadores, ganadores y descalificaciones. Las llaves del mix se conservan tal cual, listas para jugar de nuevo."
+        message="Se limpiarán todos los marcadores, ganadores y descalificaciones, incluido el podio del visor. Las llaves del mix se conservan tal cual, listas para jugar de nuevo."
         onConfirm={() =>
           tournament &&
           guard(async () => {
@@ -752,7 +774,7 @@ export function LiveAdminView({
         danger
         confirmLabel="Reiniciar todo"
         title="Reiniciar torneo completo"
-        message="Se eliminará el bracket completo y el torneo volverá a estado de registro abierto. Los jugadores registrados NO se borran: podrás lanzar un nuevo mix."
+        message="Se eliminará el bracket completo y el torneo volverá a estado de registro abierto. También se limpia el podio y toda señal en el visor. Los jugadores registrados NO se borran: podrás lanzar un nuevo mix."
         onConfirm={() =>
           tournament &&
           guard(async () => {
@@ -768,7 +790,7 @@ export function LiveAdminView({
         onClose={() => setConfirm(null)}
         confirmLabel="Reabrir"
         title="Reabrir torneo"
-        message="El torneo volverá a estado EN VIVO y el podio se ocultará."
+        message="El torneo volverá a estado EN VIVO: el visor saldrá de la pantalla de 'Torneo detenido' y regresará a la transmisión de matches."
         onConfirm={() =>
           tournament &&
           guard(async () => {
@@ -945,7 +967,8 @@ function MatchPanel({
   busy,
   stepMatch,
   onSound,
-  onShowPodium,
+  podiumOpen,
+  onTogglePodium,
 }: {
   tournament: Tournament;
   bracket: Bracket;
@@ -960,7 +983,8 @@ function MatchPanel({
   busy: boolean;
   stepMatch: (dir: 1 | -1) => void;
   onSound: (event: SoundEvent) => void;
-  onShowPodium: () => void;
+  podiumOpen: boolean;
+  onTogglePodium: () => void;
 }) {
   /* capacidad del escenario (4 PCs) + PCs del match seleccionado */
   const maxSim = maxSimultaneous(tournament.modality);
@@ -1108,11 +1132,18 @@ function MatchPanel({
                 <Undo2 size={11} /> Deshacer ganador
               </Btn>
             )}
-            {/* botón Mostrar podio — solo si es la final y tiene ganador */}
+            {/* botón Mostrar/Ocultar podio — solo si es la final y tiene ganador.
+                Refleja el estado REAL del visor: si el podio está en pantalla
+                el botón pasa a OCULTAR PODIO. */}
             {selMatch.status === "done" && selMatch.w !== null && sel!.r === bracket.rounds.length - 1 ? (
-              <Btn small variant="gold" onClick={onShowPodium} title="Muestra el podio en el visor con el campeón">
+              <Btn
+                small
+                variant={podiumOpen ? "dark" : "gold"}
+                onClick={onTogglePodium}
+                title={podiumOpen ? "Oculta el podio en el visor" : "Muestra el podio con el campeón en el visor"}
+              >
                 <Trophy size={11} />
-                Mostrar podio
+                {podiumOpen ? "Ocultar podio" : "Mostrar podio"}
               </Btn>
             ) : null}
             <Btn small variant="ghost" onClick={() => guard(() => resetMatchScores(tournament.id, sel!.r, sel!.m))}>
@@ -1379,6 +1410,7 @@ function PhaseCard({
 function PhaseBar({
   tournament,
   bracket,
+  players,
   participantsCount,
   officialsCount,
   missingPlayers,
@@ -1391,9 +1423,12 @@ function PhaseBar({
   onConfirm,
   onLaunchMix,
   onFireSound,
+  podiumOpen,
+  onTogglePodium,
 }: {
   tournament: Tournament;
   bracket: Bracket | null;
+  players: Player[];
   participantsCount: number;
   officialsCount: number;
   missingPlayers: number;
@@ -1406,12 +1441,18 @@ function PhaseBar({
   onConfirm: (kind: ConfirmKind) => void;
   onLaunchMix: () => void;
   onFireSound: (event: SoundEvent) => void;
+  podiumOpen: boolean;
+  onTogglePodium: () => void;
 }) {
   const status = tournament.status;
   const phase = status === "open" ? 0 : status === "closed" ? (tournament.startAt ? 2 : 1) : status === "mixing" ? 3 : status === "live" ? 4 : 5;
   const st = (n: number): "done" | "current" | "pending" => (n < phase ? "done" : n === phase ? "current" : "pending");
   const hasCountdown = !!tournament.startAt && tournament.startAt > Date.now();
   const capPlayers = playersCapacity(tournament);
+  /* championReady: la Gran Final ya tiene ganador — único momento en que el
+     torneo puede marcarse como FINALIZADO */
+  const finalMatch = bracket?.rounds[bracket.rounds.length - 1]?.[0] ?? null;
+  const championReady = !!finalMatch && finalMatch.w !== null && !!finalMatch.slots[finalMatch.w]?.pid;
 
   const goLive = () =>
     guard(async () => {
@@ -1448,7 +1489,18 @@ function PhaseBar({
               style={{ width: `${Math.min(100, (officialsCount / Math.max(1, capPlayers)) * 100)}%` }}
             />
           </div>
-          {phase !== 0 ? (
+          {status === "live" || status === "stopped" || status === "finished" ? (
+            /* SEGURIDAD: con el torneo en juego el registro NO se reabre.
+               Solo vuelve a estar disponible si se REINICIA el torneo
+               (Gestión → Reiniciar torneo). */
+            <span
+              className="text-[9px] font-extrabold uppercase tracking-[0.14em] text-[#8e919c] flex items-center gap-1.5"
+              title="Seguridad: con el torneo en juego no se reabre el registro. Reinicia el torneo desde Gestión para habilitarlo."
+            >
+              <Lock size={11} className="text-[#ffb830]" />
+              Bloqueado · reinicia el torneo
+            </span>
+          ) : phase !== 0 ? (
             <Btn
               small
               variant="dark"
@@ -1481,10 +1533,22 @@ function PhaseBar({
         {/* ============ FASE 2 — REGISTROS CERRADOS ============ */}
         <PhaseCard n={2} label="Registros cerrados" state={st(1)} hint="cierra la inscripción">
           {phase < 2 || status === "open" ? (
-            <Btn small variant="dark" disabled={busy || status !== "open"} onClick={() => guard(async () => {
-              await setStatus(tournament.id, "closed");
-              toast.success("Registros cerrados — el visor lo muestra en grande");
-            })}>
+            <Btn
+              small
+              variant="dark"
+              disabled={busy || status !== "open" || missingPlayers > 0}
+              title={
+                missingPlayers > 0
+                  ? `Seguridad: faltan ${missingPlayers} jugador(es) para llenar los ${capPlayers} lugares oficiales. El banco de reservas es opcional.`
+                  : "Cierra la inscripción: los lugares oficiales están completos"
+              }
+              onClick={() =>
+                guard(async () => {
+                  await closeRegistration(tournament.id, players, tournament);
+                  toast.success("Registros cerrados — el visor lo muestra en grande");
+                })
+              }
+            >
               <Lock size={11} />
               Cerrar registros
             </Btn>
@@ -1494,9 +1558,15 @@ function PhaseBar({
               Inscripción cerrada
             </span>
           )}
-          <span className="text-[9px] font-bold text-[#6b6e78] leading-snug">
-            {bankCount > 0 ? `${bankCount} en el banco de reservas` : "Sin banco de reservas"}
-          </span>
+          {missingPlayers > 0 ? (
+            <span className="text-[9px] font-bold text-[#ff8095] leading-snug">
+              Faltan {missingPlayers} jugadores · no puedes cerrar aún
+            </span>
+          ) : (
+            <span className="text-[9px] font-bold text-[#6b6e78] leading-snug">
+              {bankCount > 0 ? `${bankCount} en el banco de reservas` : "Sin banco de reservas (opcional)"}
+            </span>
+          )}
         </PhaseCard>
 
         {/* ============ FASE 3 — CUENTA REGRESIVA ============ */}
@@ -1564,6 +1634,14 @@ function PhaseBar({
                 Re-lanzar mix
               </Btn>
             </>
+          ) : status === "live" ? (
+            <span
+              className="text-[9px] font-extrabold uppercase tracking-[0.14em] text-[#8e919c] flex items-center gap-1.5"
+              title="Seguridad: con el torneo EN VIVO no se puede re-lanzar el mix. Detén o reinicia el torneo desde Gestión para habilitarlo."
+            >
+              <Lock size={11} className="text-[#ffb830]" />
+              Mix bloqueado · torneo en vivo
+            </span>
           ) : (
             <Btn
               small
@@ -1581,15 +1659,23 @@ function PhaseBar({
           </span>
         </PhaseCard>
 
-        {/* ============ FASE 5 — EN VIVO ============ */}
+        {/* ============ FASE 5 — EN VIVO / DETENIDO / FINALIZADO ============ */}
         <PhaseCard n={5} label="En vivo" state={st(4)} hint="transmisión de matches">
           {status === "live" ? (
             <span className="text-[9px] font-extrabold uppercase tracking-[0.16em] text-white flex items-center gap-1.5">
               <span className="w-2 h-2 bg-[#ff2440] blink rounded-full" aria-hidden />
               Transmitiendo
             </span>
+          ) : status === "stopped" ? (
+            <span className="text-[9px] font-extrabold uppercase tracking-[0.16em] text-[#c9cbd3] flex items-center gap-1.5">
+              <span className="w-2 h-2 bg-[#c9cbd3] blink" aria-hidden />
+              Detenido
+            </span>
           ) : status === "finished" ? (
-            <span className="text-[9px] font-extrabold uppercase tracking-[0.16em] text-[#ffb830]">Finalizado · podio</span>
+            <span className="text-[9px] font-extrabold uppercase tracking-[0.16em] text-[#ffb830] flex items-center gap-1.5">
+              <Trophy size={11} />
+              Finalizado · Podio
+            </span>
           ) : (
             <Btn small variant="red" disabled={busy || !bracket} title={bracket ? "Arranca la transmisión" : "Lanza el mix primero"} onClick={goLive}>
               <Radio size={11} />
@@ -1597,49 +1683,68 @@ function PhaseBar({
             </Btn>
           )}
           {status === "live" ? (
-            <Btn small variant="dark" disabled={busy} onClick={() => onConfirm("finish")} title="Detiene la transmisión — el visor muestra 'Torneo detenido'">
-              <Square size={11} />
-              Detener torneo
+            <>
+              {championReady ? (
+                <Btn
+                  small
+                  variant="gold"
+                  disabled={busy}
+                  onClick={() => onConfirm("finish")}
+                  title="Marca el torneo como FINALIZADO — solo posible con la Gran Final resuelta (campeón definido)"
+                >
+                  <Trophy size={11} />
+                  Finalizar torneo
+                </Btn>
+              ) : null}
+              <Btn small variant="dark" disabled={busy} onClick={() => onConfirm("stop")} title="Pausa la transmisión — NO finaliza el torneo; se reabre desde esta fase">
+                <Square size={11} />
+                Detener torneo
+              </Btn>
+            </>
+          ) : null}
+          {/* PODIO: con campeón definido el admin muestra/oculta el podio en
+              el visor. El botón refleja el estado real (Mostrar ↔ Ocultar). */}
+          {championReady ? (
+            <Btn
+              small
+              variant={podiumOpen ? "dark" : "silver"}
+              disabled={busy}
+              onClick={onTogglePodium}
+              title={podiumOpen ? "Oculta el podio en el visor y regresa a los brackets" : "Muestra el podio con el campeón en el visor"}
+            >
+              <Trophy size={11} />
+              {podiumOpen ? "Ocultar podio" : "Mostrar podio"}
+            </Btn>
+          ) : null}
+          {status === "stopped" || status === "finished" ? (
+            <Btn small variant="dark" disabled={busy} onClick={() => onConfirm("reopen")} title="El torneo vuelve a EN VIVO">
+              <Undo2 size={11} />
+              Reabrir torneo
             </Btn>
           ) : null}
         </PhaseCard>
       </div>
 
-      {/* ============ gestión (en vivo / finalizado) ============ */}
-      {status === "live" || status === "finished" ? (
+      {/* ============ gestión (en vivo / detenido / finalizado) ============
+          · live: NO hay re-mix (seguridad) — solo limpiar resultados o reiniciar.
+          · Reabrir torneo vive en la FASE 5 del flujo. */}
+      {status === "live" || status === "stopped" || status === "finished" ? (
         <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-white/8">
           <span className="label-cap mr-1">Gestión</span>
-          {status === "live" ? (
-            <>
-              <Btn small variant="ghost" disabled={busy} onClick={() => onConfirm("remix")}>
-                <RefreshCw size={11} />
-                Re-mix total
-              </Btn>
-              <Btn small variant="ghost" disabled={busy} onClick={() => onConfirm("results")} title="Limpia marcadores, ganadores y DQs; conserva las llaves">
-                <RotateCcw size={11} />
-                Reiniciar marcadores
-              </Btn>
-              <Btn small variant="ghost" disabled={busy} onClick={() => onConfirm("wipe")} title="Borra el bracket y vuelve a registro abierto; los jugadores registrados se conservan">
-                <Square size={11} />
-                Reiniciar torneo
-              </Btn>
-            </>
-          ) : (
-            <>
-              <Btn small variant="dark" disabled={busy} onClick={() => onConfirm("reopen")}>
-                <Undo2 size={11} />
-                Reabrir torneo
-              </Btn>
-              <Btn small variant="ghost" disabled={busy} onClick={() => onConfirm("results")}>
-                <RotateCcw size={11} />
-                Reiniciar marcadores
-              </Btn>
-              <Btn small variant="ghost" disabled={busy} onClick={() => onConfirm("wipe")} title="Borra el bracket y vuelve a registro abierto; los jugadores registrados se conservan">
-                <Square size={11} />
-                Reiniciar torneo
-              </Btn>
-            </>
-          )}
+          {status === "stopped" || status === "finished" ? (
+            <Btn small variant="ghost" disabled={busy} onClick={() => onConfirm("remix")} title="Solo disponible detenido/finalizado: con el torneo EN VIVO el mix está bloqueado">
+              <RefreshCw size={11} />
+              Re-mix total
+            </Btn>
+          ) : null}
+          <Btn small variant="ghost" disabled={busy} onClick={() => onConfirm("results")} title="Limpia marcadores, ganadores y DQs; conserva las llaves">
+            <RotateCcw size={11} />
+            Reiniciar marcadores
+          </Btn>
+          <Btn small variant="ghost" disabled={busy} onClick={() => onConfirm("wipe")} title="Borra el bracket y vuelve a registro abierto; los jugadores registrados se conservan">
+            <Square size={11} />
+            Reiniciar torneo
+          </Btn>
         </div>
       ) : null}
     </div>

@@ -6,6 +6,7 @@ import { Emblem } from "@/components/arena/ui";
 import { MainApp } from "@/components/arena/MainApp";
 import { SpectatorView } from "@/components/arena/SpectatorView";
 import { ObsOverlay } from "@/components/arena/ObsOverlay";
+import { AnimOverlay } from "@/components/arena/AnimOverlay";
 import { ContestViewer } from "@/components/arena/ContestViewer";
 import { useActiveTournament } from "@/lib/activeTournament";
 
@@ -33,6 +34,11 @@ function Views() {
   // Fuente de navegador para OBS Studio (fondo transparente, cards fijas)
   if (sp.get("obs") === "1") {
     return <ObsOverlay tid={sp.get("t")} />;
+  }
+  // Fuente de navegador para OBS Studio: SOLO las animaciones (VS/ganador,
+  // reserva que entra, podio) — fondo transparente, sin cards.
+  if (sp.get("obs") === "anims") {
+    return <AnimOverlay tid={sp.get("t")} />;
   }
   if (sp.get("v") === "show") {
     return <ViewerRouter tid={sp.get("t")} />;

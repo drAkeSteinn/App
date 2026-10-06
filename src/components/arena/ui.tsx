@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, ChevronDown, X } from "lucide-react";
 import type { TournamentStatus } from "@/lib/types";
@@ -178,90 +179,123 @@ export function Select({
   onChange,
   placeholder = "SELECCIONA",
   className = "",
-  compact,
 }: {
   value: string | null;
   options: SelectOption[];
   onChange: (v: string) => void;
   placeholder?: string;
   className?: string;
-  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [rect, setRect] = useState<{ top: number; left: number; width: number } | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  /* click fuera (del trigger Y del panel portal) cierra */
   useEffect(() => {
     const h = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (rootRef.current?.contains(t)) return;
+      if (panelRef.current?.contains(t)) return;
+      setOpen(false);
     };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
+
+  /* con el panel en position:fixed, cualquier scroll/resize lo desalinea → cerrar */
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    window.addEventListener("keydown", esc);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("keydown", esc);
+    };
+  }, [open]);
+
+  const toggle = () => {
+    if (!open) {
+      const r = triggerRef.current?.getBoundingClientRect();
+      if (r) setRect({ top: r.bottom + 6, left: r.left, width: r.width });
+    }
+    setOpen((v) => !v);
+  };
+
   const current = options.find((o) => o.value === value);
   return (
-    <div ref={ref} className={`relative ${className}`}>
+    <div ref={rootRef} className={`relative ${className}`}>
       <button
+        ref={triggerRef}
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggle}
         aria-expanded={open}
         aria-haspopup="listbox"
-        className={`w-full clip-card-sm flex items-center justify-between gap-2 bg-[rgba(255,255,255,0.045)] border px-3 font-goth font-bold uppercase tracking-[0.08em] transition-colors hover:border-[#e8102e]/60 ${
+        className={`hdr-ctl clip-tag w-full h-[38px] justify-between gap-2 bg-[rgba(255,255,255,0.045)] border px-3 font-bold uppercase tracking-[0.1em] hover:border-[#e8102e]/60 ${
           open ? "border-[#e8102e]" : "border-white/15"
-        } ${compact ? "py-1.5 text-[11px]" : "py-2.5 text-[12px]"}`}
+        }`}
       >
         <span className="flex items-center gap-2 min-w-0">
           {current?.logo ? (
-             
             <img src={current.logo} alt="" className="w-5 h-5 object-contain shrink-0" />
           ) : null}
-          <span className={`truncate ${current ? "text-white" : "text-[#6b6e78]"}`}>{current?.label ?? placeholder}</span>
+          <span className={`truncate text-[11px] ${current ? "text-white" : "text-[#6b6e78]"}`}>{current?.label ?? placeholder}</span>
         </span>
-        <ChevronDown size={14} className={`text-[#8e919c] transition-transform ${open ? "rotate-180" : ""}`} />
+        <ChevronDown size={14} className={`text-[#8e919c] transition-transform shrink-0 ${open ? "rotate-180" : ""}`} />
       </button>
-      <AnimatePresence>
-        {open ? (
-          <motion.div
-            initial={{ opacity: 0, y: -6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.14 }}
-            role="listbox"
-            className="absolute z-50 left-0 right-0 top-[calc(100%+6px)] max-h-72 overflow-y-auto bg-[#101014] border border-white/15 shadow-[0_20px_50px_rgba(0,0,0,0.7)] clip-card-sm"
-          >
-            {options.length === 0 ? (
-              <div className="px-3 py-3 text-[11px] text-[#6b6e78] font-bold uppercase tracking-wider">Sin opciones</div>
-            ) : (
-              options.map((o) => (
-                <button
-                  key={o.value}
-                  type="button"
-                  role="option"
-                  aria-selected={o.value === value}
-                  onClick={() => {
-                    onChange(o.value);
-                    setOpen(false);
-                  }}
-                  className={`w-full text-left px-3 py-2.5 flex items-center gap-2 border-b border-white/5 last:border-0 transition-colors ${
-                    o.value === value ? "bg-[#e8102e]/20 text-white" : "text-[#c9cbd3] hover:bg-white/5"
-                  }`}
-                >
-                  {o.logo ? (
-                     
-                    <img src={o.logo} alt="" className="w-5 h-5 object-contain shrink-0" />
-                  ) : (
-                    <span className="w-5 h-5 shrink-0 inline-flex items-center justify-center">
-                      {o.value === value ? <Check size={13} className="text-[#ff2440]" /> : null}
-                    </span>
-                  )}
-                  <span className="min-w-0">
-                    <span className="block text-[12px] font-bold uppercase tracking-wide truncate">{o.label}</span>
-                    {o.hint ? <span className="block text-[10px] text-[#6b6e78] font-semibold">{o.hint}</span> : null}
-                  </span>
-                </button>
-              ))
-            )}
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
+      {open && rect
+        ? createPortal(
+            <motion.div
+              ref={panelRef}
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.14 }}
+                role="listbox"
+                style={{ position: "fixed", top: rect.top, left: rect.left, width: rect.width, zIndex: 95 }}
+                className="max-h-72 overflow-y-auto bg-[#101014] border border-white/15 shadow-[0_20px_50px_rgba(0,0,0,0.7)] clip-tag"
+              >
+                {options.length === 0 ? (
+                  <div className="px-3 py-3 text-[11px] text-[#6b6e78] font-bold uppercase tracking-wider">Sin opciones</div>
+                ) : (
+                  options.map((o) => (
+                    <button
+                      key={o.value}
+                      type="button"
+                      role="option"
+                      aria-selected={o.value === value}
+                      onClick={() => {
+                        onChange(o.value);
+                        setOpen(false);
+                      }}
+                      className={`w-full text-left px-3 py-2.5 flex items-center gap-2 border-b border-white/5 last:border-0 transition-colors ${
+                        o.value === value ? "bg-[#e8102e]/20 text-white" : "text-[#c9cbd3] hover:bg-white/5"
+                      }`}
+                    >
+                      {o.logo ? (
+                        <img src={o.logo} alt="" className="w-5 h-5 object-contain shrink-0" />
+                      ) : (
+                        <span className="w-5 h-5 shrink-0 inline-flex items-center justify-center">
+                          {o.value === value ? <Check size={13} className="text-[#ff2440]" /> : null}
+                        </span>
+                      )}
+                      <span className="min-w-0">
+                        <span className="block text-[12px] font-bold uppercase tracking-wide truncate">{o.label}</span>
+                        {o.hint ? <span className="block text-[10px] text-[#6b6e78] font-semibold">{o.hint}</span> : null}
+                      </span>
+                    </button>
+                  ))
+                )}
+            </motion.div>,
+            document.body
+          )
+        : null}
     </div>
   );
 }
@@ -399,6 +433,7 @@ export function StatusChip({ status, big }: { status: TournamentStatus; big?: bo
     closed: "bg-[#ffb830]/12 text-[#ffb830] border-[#ffb830]/45",
     mixing: "bg-[#e8102e]/20 text-[#ff8095] border-[#e8102e]/60 live-glow",
     live: "bg-[linear-gradient(160deg,#ff2440,#a30d24)] text-white border-[#ff2440]/60 live-glow",
+    stopped: "bg-[#6b6e78]/20 text-[#c9cbd3] border-[#8e919c]/50",
     finished: "bg-[#ffb830]/15 text-[#ffb830] border-[#ffb830]/50",
   };
   const dot: Record<TournamentStatus, string> = {
@@ -406,6 +441,7 @@ export function StatusChip({ status, big }: { status: TournamentStatus; big?: bo
     closed: "bg-[#ffb830]",
     mixing: "bg-[#ff2440] blink",
     live: "bg-white blink",
+    stopped: "bg-[#c9cbd3] blink",
     finished: "bg-[#ffb830]",
   };
   return (

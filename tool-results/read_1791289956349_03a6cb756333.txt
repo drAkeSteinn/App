@@ -1,0 +1,804 @@
+     1→"use client";
+     2→
+     3→import React, { useEffect, useMemo, useRef, useState } from "react";
+     4→import { AnimatePresence, motion } from "framer-motion";
+     5→import confetti from "canvas-confetti";
+     6→import { Crown, Hand, Music, Trophy, Users, Volume2 } from "lucide-react";
+     7→import type { Contest, Participant } from "@/lib/contests";
+     8→import { useContestState, useParticipants, useSounds } from "@/lib/contestHooks";
+     9→import { useActiveTournament } from "@/lib/activeTournament";
+    10→import { FitLine } from "./MatchSpotlight";
+    11→import { Backdrop } from "./ui";
+    12→
+    13→/* ============================================================
+    14→   ContestViewer — visor de concursos para proyección.
+    15→   · Cosplay: muestra el participante aplaudido en grande.
+    16→   · Sound: split top/bottom — arriba sonido+imagen+respuesta,
+    17→     abajo marcador con cards grandes de jugadores.
+    18→   ============================================================ */
+    19→
+    20→function ShowBackground() {
+    21→  return (
+    22→    <div className="absolute inset-0 z-0 pointer-events-none" aria-hidden>
+    23→      <img src="/Background.jpg" alt="" draggable={false} className="w-full h-full object-cover" />
+    24→      <div
+    25→        className="absolute inset-0"
+    26→        style={{
+    27→          background: "radial-gradient(115% 85% at 50% 38%, rgba(7,7,8,0.4) 0%, rgba(7,7,8,0.72) 60%, rgba(7,7,8,0.9) 100%)",
+    28→        }}
+    29→      />
+    30→    </div>
+    31→  );
+    32→}
+    33→
+    34→/* ---------- Cosplay spotlight ---------- */
+    35→
+    36→function CosplaySpotlight({
+    37→  nick,
+    38→  name,
+    39→  isWinner,
+    40→}: {
+    41→  nick: string;
+    42→  name: string;
+    43→  isWinner: boolean;
+    44→}) {
+    45→  useEffect(() => {
+    46→    if (!isWinner) return;
+    47→    const colors = ["#ffb830", "#ffe9b0", "#ffffff"];
+    48→    confetti({ particleCount: 80, spread: 70, origin: { y: 0.5 }, colors, disableForReducedMotion: true });
+    49→    const iv = setInterval(() => {
+    50→      confetti({ particleCount: 30, spread: 90, origin: { x: 0.2 + Math.random() * 0.6, y: 0.3 }, colors, disableForReducedMotion: true });
+    51→    }, 1800);
+    52→    return () => clearInterval(iv);
+    53→  }, [isWinner]);
+    54→
+    55→  return (
+    56→    <motion.div
+    57→      key={nick}
+    58→      initial={{ opacity: 0, scale: 0.5, y: 60 }}
+    59→      animate={{ opacity: 1, scale: 1, y: 0 }}
+    60→      exit={{ opacity: 0, scale: 0.8, y: -30 }}
+    61→      transition={{ type: "spring", stiffness: 200, damping: 20 }}
+    62→      className="flex flex-col items-center gap-6 sm:gap-10 px-5"
+    63→    >
+    64→      {/* tag grande — ¡RUIDO! o Ganador, con slashes 3x más grandes */}
+    65→      <motion.div
+    66→        initial={{ y: -28, opacity: 0 }}
+    67→        animate={{ y: 0, opacity: 1 }}
+    68→        transition={{ delay: 0.1 }}
+    69→        className="flex items-center gap-5"
+    70→      >
+    71→        <span className="slashes w-28 h-10 inline-block" aria-hidden />
+    72→        <motion.span
+    73→          animate={isWinner ? {} : { scale: [1, 1.06, 1] }}
+    74→          transition={isWinner ? {} : { duration: 0.6, repeat: Infinity, ease: "easeInOut" }}
+    75→          className={`chip clip-tag ${isWinner ? "bg-[#ffb830] text-[#241500]" : "bg-[#e8102e] text-white"} text-[28px] sm:text-[36px] font-extrabold tracking-[0.3em] uppercase px-8 py-4 flex items-center gap-3 live-glow`}
+    76→        >
+    77→          {isWinner ? <Crown size={28} /> : <Hand size={28} />}
+    78→          {isWinner ? "¡Ganador!" : "¡Ruido!"}
+    79→        </motion.span>
+    80→        <span className="slashes w-28 h-10 inline-block" aria-hidden />
+    81→      </motion.div>
+    82→
+    83→      {/* nick — con animación de zoom in/out + shake cuando se aplaude */}
+    84→      <motion.div
+    85→        animate={isWinner ? {} : { scale: [1, 1.08, 1], x: [0, -3, 3, -2, 2, 0] }}
+    86→        transition={isWinner ? {} : { duration: 0.5, repeat: Infinity, ease: "easeInOut" }}
+    87→      >
+    88→        <FitLine>
+    89→          <span
+    90→            className="font-display italic uppercase leading-[0.9] whitespace-nowrap text-silver-grad glitch-in"
+    91→            style={{ fontSize: "clamp(40px, 8vw, 110px)" }}
+    92→          >
+    93→            {nick}
+    94→          </span>
+    95→        </FitLine>
+    96→      </motion.div>
+    97→
+    98→      {name ? (
+    99→        <motion.span
+   100→          initial={{ opacity: 0 }}
+   101→          animate={{ opacity: 0.7 }}
+   102→          transition={{ delay: 0.4 }}
+   103→          className="text-[16px] sm:text-[22px] font-bold tracking-[0.2em] uppercase text-[#c9cbd3]"
+   104→        >
+   105→          {name}
+   106→        </motion.span>
+   107→      ) : null}
+   108→
+   109→      {/* ondas de aplauso más grandes */}
+   110→      {!isWinner ? (
+   111→        <div className="flex items-center gap-3">
+   112→          {[0, 1, 2, 3, 4].map((i) => (
+   113→            <motion.span
+   114→              key={i}
+   115→              className="w-5 h-5 rounded-full bg-[#ffb830]"
+   116→              animate={{ scale: [1, 1.8, 1], opacity: [0.3, 1, 0.3] }}
+   117→              transition={{ duration: 0.7, repeat: Infinity, delay: i * 0.1, ease: "easeInOut" }}
+   118→            />
+   119→          ))}
+   120→        </div>
+   121→      ) : null}
+   122→    </motion.div>
+   123→  );
+   124→}
+   125→
+   126→/* ---------- Cosplay grid ---------- */
+   127→
+   128→function CosplayGrid({ participants }: { participants: Participant[] }) {
+   129→  return (
+   130→    <motion.div
+   131→      initial={{ opacity: 0 }}
+   132→      animate={{ opacity: 1 }}
+   133→      exit={{ opacity: 0 }}
+   134→      className="flex flex-col items-center gap-6 w-full max-w-6xl px-5"
+   135→    >
+   136→      {/* título PARTICIPANTES — 3x más grande */}
+   137→      <div className="flex items-center gap-5">
+   138→        <span className="slashes w-24 h-9 inline-block" aria-hidden />
+   139→        <motion.h2
+   140→          initial={{ opacity: 0, y: -10 }}
+   141→          animate={{ opacity: 1, y: 0 }}
+   142→          className="font-display italic uppercase leading-none text-silver-grad"
+   143→          style={{ fontSize: "clamp(28px, 4vw, 48px)" }}
+   144→        >
+   145→          Participantes
+   146→        </motion.h2>
+   147→        <span className="slashes w-24 h-9 inline-block" aria-hidden />
+   148→      </div>
+   149→
+   150→      {participants.length === 0 ? (
+   151→        <div className="flex flex-col items-center gap-3 py-8">
+   152→          <Hand size={48} className="text-[#6b6e78]" />
+   153→          <p className="text-[14px] font-bold tracking-[0.16em] uppercase text-[#6b6e78]">
+   154→            Sin participantes registrados
+   155→          </p>
+   156→        </div>
+   157→      ) : (
+   158→        <>
+   159→          {/* grid de cards */}
+   160→          <div
+   161→            className="grid gap-4 w-full justify-items-center"
+   162→            style={{
+   163→              gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, 260px), 1fr))`,
+   164→              maxWidth: "1200px",
+   165→            }}
+   166→          >
+   167→            {participants.map((p, i) => (
+   168→              <motion.div
+   169→                key={p.id}
+   170→                initial={{ opacity: 0, y: 14 }}
+   171→                animate={{ opacity: 1, y: 0 }}
+   172→                transition={{ delay: Math.min(i * 0.05, 0.6) }}
+   173→                className="panel clip-card-sm w-full p-5 flex flex-col items-center gap-3 text-center"
+   174→              >
+   175→                <span className="w-12 h-12 shrink-0 clip-badge bg-[#e8102e] flex items-center justify-center font-display italic text-[18px] text-white">
+   176→                  {i + 1}
+   177→                </span>
+   178→                <FitLine>
+   179→                  <span className="font-display italic uppercase text-silver-grad leading-none" style={{ fontSize: "clamp(18px, 2.4vw, 30px)" }}>
+   180→                    {p.nick}
+   181→                  </span>
+   182→                </FitLine>
+   183→                {p.name ? (
+   184→                  <span className="text-[11px] font-bold tracking-[0.14em] uppercase text-[#8e919c] truncate w-full">
+   185→                    {p.name}
+   186→                  </span>
+   187→                ) : null}
+   188→              </motion.div>
+   189→            ))}
+   190→          </div>
+   191→          {/* contador DEBAJO de las cards */}
+   192→          <p className="text-[14px] sm:text-[16px] font-extrabold tracking-[0.22em] uppercase text-[#8e919c] text-center mt-2">
+   193→            {participants.length} {participants.length === 1 ? "participante" : "participantes"} en concurso
+   194→          </p>
+   195→        </>
+   196→      )}
+   197→    </motion.div>
+   198→  );
+   199→}
+   200→
+   201→/* ---------- Sound: visualizador de ondas real (AnalyserNode) ---------- */
+   202→
+   203→/** Visualizador de audio que reacciona al sonido REAL usando Web Audio API.
+   204→    Cada barra mide la amplitud de una banda de frecuencia del audio en vivo. */
+   205→function LiveWaveform({ audioEl }: { audioEl: HTMLAudioElement | null }) {
+   206→  const canvasRef = useRef<HTMLCanvasElement>(null);
+   207→  const rafRef = useRef<number>(0);
+   208→
+   209→  useEffect(() => {
+   210→    if (!audioEl) return;
+   211→    const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+   212→    if (!AC) return;
+   213→    let ctx: AudioContext | null = null;
+   214→    let analyser: AnalyserNode | null = null;
+   215→    let source: MediaElementAudioSourceNode | null = null;
+   216→    try {
+   217→      ctx = new AC();
+   218→      analyser = ctx.createAnalyser();
+   219→      analyser.fftSize = 64;
+   220→      analyser.smoothingTimeConstant = 0.75;
+   221→      source = ctx.createMediaElementSource(audioEl);
+   222→      source.connect(analyser);
+   223→      analyser.connect(ctx.destination);
+   224→    } catch {
+   225→      return;
+   226→    }
+   227→    const data = new Uint8Array(analyser.frequencyBinCount);
+   228→    const canvas = canvasRef.current;
+   229→    if (!canvas) return;
+   230→    const c2d = canvas.getContext("2d");
+   231→    if (!c2d) return;
+   232→
+   233→    const BARS = 24;
+   234→    const draw = () => {
+   235→      if (!analyser || !c2d) return;
+   236→      analyser.getByteFrequencyData(data);
+   237→      const w = canvas.width;
+   238→      const h = canvas.height;
+   239→      c2d.clearRect(0, 0, w, h);
+   240→      const barW = w / BARS;
+   241→      for (let i = 0; i < BARS; i++) {
+   242→        // mapear los bins del analyser a las barras
+   243→        const idx = Math.floor((i / BARS) * data.length);
+   244→        const val = data[idx] / 255; // 0-1
+   245→        const barH = Math.max(3, val * h * 0.95);
+   246→        const x = i * barW;
+   247→        const y = (h - barH) / 2;
+   248→        // gradiente rojo→dorado
+   249→        const grad = c2d.createLinearGradient(0, y, 0, y + barH);
+   250→        grad.addColorStop(0, "#ff2440");
+   251→        grad.addColorStop(1, "#ffb830");
+   252→        c2d.fillStyle = grad;
+   253→        c2d.fillRect(x + 1, y, barW - 2, barH);
+   254→      }
+   255→      rafRef.current = requestAnimationFrame(draw);
+   256→    };
+   257→    draw();
+   258→    return () => {
+   259→      cancelAnimationFrame(rafRef.current);
+   260→      try {
+   261→        source?.disconnect();
+   262→        analyser?.disconnect();
+   263→        ctx?.close();
+   264→      } catch {
+   265→        /* ignore */
+   266→      }
+   267→    };
+   268→  }, [audioEl]);
+   269→
+   270→  return (
+   271→    <canvas
+   272→      ref={canvasRef}
+   273→      width={400}
+   274→      height={64}
+   275→      className="w-full max-w-[400px] h-12 sm:h-16"
+   276→      style={{ imageRendering: "auto" }}
+   277→    />
+   278→  );
+   279→}
+   280→
+   281→/* ---------- Sound: ganador coronado — animación llamativa ---------- */
+   282→
+   283→function SoundWinner({ nick, score }: { nick: string; score: number }) {
+   284→  useEffect(() => {
+   285→    const colors = ["#ffb830", "#ffe9b0", "#ffffff", "#ff2440"];
+   286→    confetti({ particleCount: 90, spread: 75, origin: { y: 0.45 }, colors, disableForReducedMotion: true });
+   287→    const iv = setInterval(() => {
+   288→      confetti({ particleCount: 34, spread: 95, origin: { x: 0.15 + Math.random() * 0.7, y: 0.25 }, colors, disableForReducedMotion: true });
+   289→    }, 1600);
+   290→    return () => clearInterval(iv);
+   291→  }, []);
+   292→
+   293→  return (
+   294→    <motion.div
+   295→      initial={{ opacity: 0, scale: 0.5, y: 40 }}
+   296→      animate={{ opacity: 1, scale: 1, y: 0 }}
+   297→      exit={{ opacity: 0, scale: 0.85 }}
+   298→      transition={{ type: "spring", stiffness: 200, damping: 20 }}
+   299→      className="flex flex-col items-center gap-4 sm:gap-6 px-5"
+   300→    >
+   301→      {/* tag GANADOR */}
+   302→      <motion.div
+   303→        initial={{ y: -24, opacity: 0 }}
+   304→        animate={{ y: 0, opacity: 1 }}
+   305→        transition={{ delay: 0.1 }}
+   306→        className="flex items-center gap-5"
+   307→      >
+   308→        <span className="slashes w-24 h-9 inline-block" aria-hidden />
+   309→        <span className="chip clip-tag bg-[#ffb830] text-[#241500] text-[24px] sm:text-[30px] font-extrabold tracking-[0.3em] uppercase px-7 py-3.5 flex items-center gap-3 live-glow">
+   310→          <Crown size={26} />
+   311→          ¡Ganador!
+   312→        </span>
+   313→        <span className="slashes w-24 h-9 inline-block" aria-hidden />
+   314→      </motion.div>
+   315→
+   316→      {/* trophy con pulso */}
+   317→      <motion.div
+   318→        animate={{ scale: [1, 1.12, 1], filter: ["brightness(1)", "brightness(1.3)", "brightness(1)"] }}
+   319→        transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
+   320→      >
+   321→        <Trophy size={56} className="text-[#ffb830]" style={{ filter: "drop-shadow(0 0 26px rgba(255,184,48,0.7))" }} />
+   322→      </motion.div>
+   323→
+   324→      {/* nick en GRANDE */}
+   325→      <FitLine>
+   326→        <span
+   327→          className="font-display italic uppercase leading-[0.9] whitespace-nowrap text-silver-grad glitch-in"
+   328→          style={{ fontSize: "clamp(36px, 7vw, 96px)" }}
+   329→        >
+   330→          {nick}
+   331→        </span>
+   332→      </FitLine>
+   333→
+   334→      {/* score */}
+   335→      <motion.div
+   336→        initial={{ opacity: 0, y: 16 }}
+   337→        animate={{ opacity: 1, y: 0 }}
+   338→        transition={{ delay: 0.35 }}
+   339→        className="flex items-center gap-3"
+   340→      >
+   341→        <span className="text-[11px] font-extrabold tracking-[0.28em] uppercase text-[#8e919c]">
+   342→          Puntos
+   343→        </span>
+   344→        <span className="font-display italic text-[#ffb830] tabular-nums leading-none" style={{ fontSize: "clamp(28px, 4vw, 52px)" }}>
+   345→          {score}
+   346→        </span>
+   347→      </motion.div>
+   348→
+   349→      {/* ondas doradas de celebración */}
+   350→      <div className="flex items-center gap-2 mt-1">
+   351→        {[0, 1, 2, 3, 4].map((i) => (
+   352→          <motion.span
+   353→            key={i}
+   354→            className="w-3 h-3 rounded-full bg-[#ffb830]"
+   355→            animate={{ scale: [1, 1.6, 1], opacity: [0.3, 1, 0.3] }}
+   356→            transition={{ duration: 0.9, repeat: Infinity, delay: i * 0.12, ease: "easeInOut" }}
+   357→          />
+   358→        ))}
+   359→      </div>
+   360→    </motion.div>
+   361→  );
+   362→}
+   363→
+   364→/* ---------- Sound: zona superior (sonido + imagen + respuesta) ---------- */
+   365→
+   366→function SoundStage({
+   367→  question,
+   368→  answer,
+   369→  image,
+   370→  revealAnswer,
+   371→  revealQuestion,
+   372→  audioEl,
+   373→  soundActive,
+   374→}: {
+   375→  question: string;
+   376→  answer: string;
+   377→  image: string | null;
+   378→  revealAnswer: boolean;
+   379→  revealQuestion: boolean;
+   380→  audioEl: HTMLAudioElement | null;
+   381→  soundActive: boolean;
+   382→}) {
+   383→  return (
+   384→    <div className="flex flex-col items-center justify-center gap-4 sm:gap-6 px-5 w-full">
+   385→      {/* tag SONANDO — más grande, solo cuando el audio está realmente activo */}
+   386→      {soundActive ? (
+   387→        <motion.span
+   388→          initial={{ opacity: 0, y: -10 }}
+   389→          animate={{ opacity: 1, y: 0 }}
+   390→          exit={{ opacity: 0 }}
+   391→          className="chip clip-tag bg-[#e8102e] text-white text-[22px] sm:text-[28px] font-extrabold tracking-[0.3em] uppercase px-8 py-4 flex items-center gap-3 live-glow"
+   392→        >
+   393→          <span className="w-3.5 h-3.5 bg-white rounded-full blink" />
+   394→          Sonando
+   395→        </motion.span>
+   396→      ) : null}
+   397→
+   398→      {/* visualizador de ondas real — solo cuando el audio está activo y no se revela respuesta */}
+   399→      {soundActive && !revealAnswer ? (
+   400→        <LiveWaveform audioEl={audioEl} />
+   401→      ) : null}
+   402→
+   403→      {/* pregunta — cuando hay sonido activo o se pidió mostrar, y no se revela respuesta */}
+   404→      {(soundActive || revealQuestion) && !revealAnswer ? (
+   405→        <FitLine>
+   406→          <span className="font-display italic uppercase text-silver-grad" style={{ fontSize: "clamp(18px, 3vw, 38px)" }}>
+   407→            {question}
+   408→          </span>
+   409→        </FitLine>
+   410→      ) : null}
+   411→
+   412→      {/* RESPUESTA REVELADA — imagen + nombre del juego */}
+   413→      <AnimatePresence>
+   414→        {revealAnswer ? (
+   415→          <motion.div
+   416→            key="answer"
+   417→            initial={{ opacity: 0, scale: 0.7, y: 20 }}
+   418→            animate={{ opacity: 1, scale: 1, y: 0 }}
+   419→            exit={{ opacity: 0, scale: 0.8 }}
+   420→            transition={{ type: "spring", stiffness: 220, damping: 18 }}
+   421→            className="flex flex-col items-center gap-4"
+   422→          >
+   423→            <span className="chip clip-tag bg-[#ffb830] text-[#241500] text-[18px] sm:text-[22px] font-extrabold tracking-[0.26em] uppercase px-6 py-3">
+   424→              Respuesta
+   425→            </span>
+   426→            {image ? (
+   427→              <div className="w-28 h-28 sm:w-36 sm:h-36 lg:w-44 lg:h-44 clip-card-sm border-2 border-[#ffb830] overflow-hidden shadow-[0_0_40px_rgba(255,184,48,0.55)]">
+   428→                <img src={image} alt={answer} className="w-full h-full object-cover" />
+   429→              </div>
+   430→            ) : null}
+   431→            <FitLine>
+   432→              <span
+   433→                className="font-display italic uppercase text-silver-grad leading-none"
+   434→                style={{ fontSize: "clamp(28px, 6vw, 72px)" }}
+   435→              >
+   436→                {answer}
+   437→              </span>
+   438→            </FitLine>
+   439→          </motion.div>
+   440→        ) : null}
+   441→      </AnimatePresence>
+   442→    </div>
+   443→  );
+   444→}
+   445→
+   446→/* ---------- Sound: idle (sin sonido) — branding HyperX ---------- */
+   447→
+   448→function SoundIdle({ isFinished }: { isFinished: boolean }) {
+   449→  return (
+   450→    <motion.div
+   451→      initial={{ opacity: 0 }}
+   452→      animate={{ opacity: 1 }}
+   453→      exit={{ opacity: 0 }}
+   454→      className="flex flex-col items-center gap-6 text-center px-5"
+   455→    >
+   456→      {isFinished ? (
+   457→        <>
+   458→          <Trophy size={56} className="text-[#ffb830]" style={{ filter: "drop-shadow(0 0 20px rgba(255,184,48,0.5))" }} />
+   459→          <p className="text-[18px] font-bold tracking-[0.22em] uppercase text-[#8e919c]">
+   460→            Concurso finalizado
+   461→          </p>
+   462→        </>
+   463→      ) : (
+   464→        <>
+   465→          {/* logo HyperX — más grande con glow */}
+   466→          <motion.div
+   467→            animate={{ opacity: [0.65, 1, 0.65], scale: [0.97, 1.03, 0.97] }}
+   468→            transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
+   469→            className="w-28 h-28 sm:w-32 sm:h-32 flex items-center justify-center"
+   470→          >
+   471→            <img
+   472→              src="/hyperlogo.png"
+   473→              alt="HyperX"
+   474→              className="w-full h-full object-contain"
+   475→              style={{ filter: "drop-shadow(0 0 28px rgba(232,16,46,0.5))" }}
+   476→            />
+   477→          </motion.div>
+   478→          <div className="flex flex-col items-center gap-3">
+   479→            <motion.h2
+   480→              animate={{ opacity: [0.55, 1, 0.55] }}
+   481→              transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut", delay: 0.3 }}
+   482→              className="font-display italic uppercase leading-none text-silver-grad"
+   483→              style={{ fontSize: "clamp(28px, 5vw, 56px)" }}
+   484→            >
+   485→              ¿Qué tan gamer eres?
+   486→            </motion.h2>
+   487→            <motion.p
+   488→              animate={{ opacity: [0.5, 1, 0.5] }}
+   489→              transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut", delay: 0.6 }}
+   490→              className="text-[16px] sm:text-[22px] font-extrabold tracking-[0.3em] uppercase text-red-grad"
+   491→            >
+   492→              Demuéstralo con HyperX
+   493→            </motion.p>
+   494→          </div>
+   495→          {/* puntos pulsantes más grandes */}
+   496→          <div className="flex items-center gap-3 mt-2">
+   497→            {[0, 1, 2, 3, 4].map((i) => (
+   498→              <motion.span
+   499→                key={i}
+   500→                className="w-3 h-3 rounded-full bg-[#e8102e]"
+   501→                animate={{ scale: [0.5, 1.3, 0.5], opacity: [0.2, 1, 0.2] }}
+   502→                transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.15, ease: "easeInOut" }}
+   503→              />
+   504→            ))}
+   505→          </div>
+   506→        </>
+   507→      )}
+   508→    </motion.div>
+   509→  );
+   510→}
+   511→
+   512→/* ---------- Sound: zona inferior (marcador con cards grandes) ---------- */
+   513→
+   514→function LeaderCard({
+   515→  p,
+   516→  rank,
+   517→  isWinner,
+   518→}: {
+   519→  p: Participant;
+   520→  rank: number;
+   521→  isWinner: boolean;
+   522→}) {
+   523→  const prevScore = useRef(p.score);
+   524→  const [flash, setFlash] = useState(false);
+   525→  useEffect(() => {
+   526→    if (p.score > prevScore.current) {
+   527→      prevScore.current = p.score;
+   528→      const r = requestAnimationFrame(() => setFlash(true));
+   529→      const t = setTimeout(() => setFlash(false), 1200);
+   530→      return () => {
+   531→        cancelAnimationFrame(r);
+   532→        clearTimeout(t);
+   533→      };
+   534→    }
+   535→    prevScore.current = p.score;
+   536→  }, [p.score]);
+   537→
+   538→  return (
+   539→    <motion.div
+   540→      initial={{ opacity: 0, y: 8 }}
+   541→      animate={{ opacity: 1, y: 0 }}
+   542→      className={`clip-card-sm px-4 py-3 flex items-center gap-3 transition-all relative overflow-hidden ${
+   543→        flash
+   544→          ? "bg-[linear-gradient(160deg,rgba(255,184,48,0.3),rgba(255,184,48,0.08))] border border-[#ffb830]"
+   545→          : isWinner
+   546→            ? "bg-[linear-gradient(160deg,rgba(255,184,48,0.2),rgba(255,184,48,0.05))] border border-[#ffb830]/60"
+   547→            : rank === 0
+   548→              ? "bg-white/[0.08] border border-white/12"
+   549→              : "bg-black/40 border border-white/8"
+   550→      }`}
+   551→    >
+   552→      {flash ? (
+   553→        <>
+   554→          <motion.div
+   555→            initial={{ opacity: 0.8, scale: 1 }}
+   556→            animate={{ opacity: 0, scale: 1.3 }}
+   557→            transition={{ duration: 1.2, ease: "easeOut" }}
+   558→            className="absolute inset-0 bg-[radial-gradient(60%_60%_at_50%_50%,rgba(255,184,48,0.35),transparent_70%)] pointer-events-none"
+   559→          />
+   560→          <motion.div
+   561→            initial={{ opacity: 0, y: -8 }}
+   562→            animate={{ opacity: [0, 1, 0], y: -20 }}
+   563→            transition={{ duration: 1, ease: "easeOut" }}
+   564→            className="absolute right-3 top-0 font-display italic text-[#ffb830] text-[14px] font-extrabold pointer-events-none"
+   565→          >
+   566→            +1
+   567→          </motion.div>
+   568→        </>
+   569→      ) : null}
+   570→      <span className={`w-9 h-9 shrink-0 clip-badge flex items-center justify-center font-display italic text-[16px] ${rank === 0 ? "bg-[#ffb830] text-[#241500]" : "bg-black/40 border border-white/10 text-[#8e919c]"}`}>
+   571→        {rank + 1}
+   572→      </span>
+   573→      <div className="min-w-0 flex-1">
+   574→        <FitLine>
+   575→          <span className="font-display italic uppercase text-white truncate block" style={{ fontSize: "clamp(15px, 1.8vw, 22px)" }}>
+   576→            {p.nick}
+   577→          </span>
+   578→        </FitLine>
+   579→      </div>
+   580→      {isWinner ? <Crown size={18} className="text-[#ffb830] shrink-0" /> : null}
+   581→      <span
+   582→        key={p.score}
+   583→        className={`font-display italic tabular-nums leading-none ${flash ? "text-[#ffe9b0] obs-score-pop" : "text-[#ffb830]"}`}
+   584→        style={{ fontSize: "clamp(22px, 3vw, 36px)" }}
+   585→      >
+   586→        {p.score}
+   587→      </span>
+   588→    </motion.div>
+   589→  );
+   590→}
+   591→
+   592→function SoundLeaderboard({ participants, winnerPid }: { participants: Participant[]; winnerPid: string | null }) {
+   593→  const sorted = useMemo(
+   594→    () => [...participants].sort((a, b) => b.score - a.score),
+   595→    [participants]
+   596→  );
+   597→  if (sorted.length === 0) return null;
+   598→  return (
+   599→    <div className="w-full h-full flex flex-col">
+   600→      <div className="label-cap mb-2 flex items-center gap-2 shrink-0">
+   601→        <Trophy size={13} className="text-[#ffb830]" />
+   602→        Marcador
+   603→        <span className="text-[#6b6e78]">· {sorted.length} jugadores</span>
+   604→      </div>
+   605→      <div
+   606→        className="grid gap-2 flex-1 content-center"
+   607→        style={{
+   608→          gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, 180px), 1fr))`,
+   609→        }}
+   610→      >
+   611→        {sorted.map((p, i) => (
+   612→          <LeaderCard key={p.id} p={p} rank={i} isWinner={winnerPid === p.id} />
+   613→        ))}
+   614→      </div>
+   615→    </div>
+   616→  );
+   617→}
+   618→
+   619→/* ============================================================ */
+   620→
+   621→export function ContestViewer() {
+   622→  const { contest } = useActiveTournament();
+   623→  const { data: participants } = useParticipants(contest?.id ?? null);
+   624→  const { data: sounds } = useSounds(contest?.id ?? null);
+   625→  const state = useContestState(contest?.id ?? null);
+   626→
+   627→  /* ---- Audio: se reproduce una vez. El visor detecta cuando termina
+   628→     y actualiza `soundActive` localmente (no depende de Firestore). ---- */
+   629→  const audioRef = useRef<HTMLAudioElement | null>(null);
+   630→  const [audioEl, setAudioEl] = useState<HTMLAudioElement | null>(null);
+   631→  const [soundActive, setSoundActive] = useState(false);
+   632→
+   633→  const currentSoundId = state?.currentSoundId ?? null;
+   634→  const fsSoundPlaying = state?.soundPlaying ?? false;
+   635→  const currentSound = useMemo(() => {
+   636→    if (!currentSoundId || !sounds.length) return null;
+   637→    return sounds.find((s) => s.id === currentSoundId) ?? null;
+   638→  }, [currentSoundId, sounds]);
+   639→  const currentSoundData = currentSound?.data ?? null;
+   640→
+   641→  useEffect(() => {
+   642→    const raf = requestAnimationFrame(() => {
+   643→      // si no hay sonido o Firestore dice que no está sonando → limpiar
+   644→      if (!currentSoundData || !fsSoundPlaying) {
+   645→        if (audioRef.current) {
+   646→          audioRef.current.pause();
+   647→          audioRef.current = null;
+   648→        }
+   649→        setAudioEl(null);
+   650→        setSoundActive(false);
+   651→        return;
+   652→      }
+   653→      // recrear el Audio → suena una vez desde el inicio
+   654→      if (audioRef.current) {
+   655→        audioRef.current.pause();
+   656→      }
+   657→      const audio = new Audio(currentSoundData);
+   658→      audio.loop = false;
+   659→      audio.onended = () => {
+   660→        // el audio terminó naturalmente → el visor deja de mostrar "Sonando"
+   661→        setSoundActive(false);
+   662→        setAudioEl(null);
+   663→      };
+   664→      audio.play().then(() => {
+   665→        setSoundActive(true);
+   666→        setAudioEl(audio);
+   667→      }).catch(() => {
+   668→        setSoundActive(false);
+   669→      });
+   670→      audioRef.current = audio;
+   671→    });
+   672→    return () => {
+   673→      cancelAnimationFrame(raf);
+   674→      if (audioRef.current) {
+   675→        audioRef.current.pause();
+   676→        audioRef.current = null;
+   677→      }
+   678→      setAudioEl(null);
+   679→      setSoundActive(false);
+   680→    };
+   681→  }, [currentSoundData, fsSoundPlaying]);
+   682→
+   683→  if (!contest) {
+   684→    return (
+   685→      <div className="fixed inset-0 flex items-center justify-center" style={{ background: "#070708" }}>
+   686→        <ShowBackground />
+   687→        <div className="relative z-10 text-center px-6">
+   688→          <span className="text-[11px] font-extrabold tracking-[0.5em] uppercase text-[#ff8095]">Visor de concursos</span>
+   689→          <h1 className="font-display italic text-[34px] sm:text-[44px] uppercase leading-none mt-3">
+   690→            <span className="text-silver-grad">Esperando</span> <span className="text-red-grad">concurso</span>
+   691→          </h1>
+   692→          <p className="text-[12px] font-bold tracking-[0.16em] uppercase text-[#8e919c] mt-6">
+   693→            El administrador debe abrir un concurso
+   694→          </p>
+   695→        </div>
+   696→      </div>
+   697→    );
+   698→  }
+   699→
+   700→  const isCosplay = contest.type === "cosplay";
+   701→  const isSound = contest.type === "sound";
+   702→  const spotlightPid = state?.spotlightPid ?? null;
+   703→  const spotlight = participants.find((p) => p.id === spotlightPid) ?? null;
+   704→  const winner = contest.winnerPid ? participants.find((p) => p.id === contest.winnerPid) : null;
+   705→  const isFinished = contest.status === "finished";
+   706→  const revealAnswer = state?.revealAnswer ?? false;
+   707→  const revealQuestion = state?.revealQuestion ?? false;
+   708→
+   709→  /* El visor muestra el SoundStage cuando: hay sonido activo (realmente
+   710→     reproduciéndose), o se pidió mostrar la pregunta, o se reveló la
+   711→     respuesta. Si no → muestra el idle con branding HyperX. */
+   712→  const showStage = soundActive || revealQuestion || revealAnswer;
+   713→
+   714→  return (
+   715→    <div className="fixed inset-0 flex flex-col overflow-hidden" style={{ background: "#070708" }}>
+   716→      <Backdrop variant="show" />
+   717→      <ShowBackground />
+   718→
+   719→      {/* header con TÍTULO GRANDE del concurso */}
+   720→      <header className="relative z-20 shrink-0 border-b border-white/10 bg-black/55 backdrop-blur-md flex flex-col items-center justify-center py-3 px-4">
+   721→        <div className="flex items-center gap-3 mb-1">
+   722→          <span className="text-[9px] sm:text-[10px] font-extrabold tracking-[0.4em] uppercase text-[#ffb830]">
+   723→            {isCosplay ? "Concurso Cosplayer" : "Sonidos Gamer"}
+   724→          </span>
+   725→          <span className={`chip clip-tag ${isFinished ? "bg-[#ffb830] text-[#241500]" : contest.status === "live" ? "bg-[#e8102e] text-white" : "bg-white/[0.06] text-[#c9cbd3] border border-white/10"} !text-[8px] !px-2 !py-[2px]`}>
+   726→            {isFinished ? "FINALIZADO" : contest.status === "live" ? "EN VIVO" : "REGISTRO"}
+   727→          </span>
+   728→        </div>
+   729→        <FitLine>
+   730→          <h1 className="font-display italic uppercase leading-none text-silver-grad" style={{ fontSize: "clamp(22px, 3.5vw, 40px)" }}>
+   731→            {contest.name}
+   732→          </h1>
+   733→        </FitLine>
+   734→        <div className="flex items-center gap-3 mt-1.5 text-[9px] font-bold tracking-[0.2em] uppercase text-[#6b6e78]">
+   735→          <span className="flex items-center gap-1">
+   736→            <Users size={11} />
+   737→            {participants.length}
+   738→          </span>
+   739→          {isSound ? (
+   740→            <span className="flex items-center gap-1">
+   741→              <Music size={11} />
+   742→              {sounds.length} sonidos
+   743→            </span>
+   744→          ) : null}
+   745→        </div>
+   746→      </header>
+   747→
+   748→      {/* cuerpo */}
+   749→      <main className="relative flex-1 min-h-0 flex flex-col overflow-hidden">
+   750→        {isCosplay ? (
+   751→          <div className="flex-1 min-h-0 flex items-center justify-center py-4 overflow-y-auto">
+   752→            <AnimatePresence mode="wait">
+   753→              {winner ? (
+   754→                <CosplaySpotlight key="winner" nick={winner.nick} name={winner.name} isWinner />
+   755→              ) : spotlight ? (
+   756→                <CosplaySpotlight key={spotlight.id} nick={spotlight.nick} name={spotlight.name} isWinner={false} />
+   757→              ) : (
+   758→                <CosplayGrid key="grid" participants={participants.filter((p) => !p.eliminated)} />
+   759→              )}
+   760→            </AnimatePresence>
+   761→          </div>
+   762→        ) : null}
+   763→
+   764→        {isSound ? (
+   765→          <>
+   766→            {/* ZONA SUPERIOR (50%): ganador / sonido + imagen + respuesta / idle */}
+   767→            <div className="flex-[1_1_50%] min-h-0 flex items-center justify-center p-4 border-b border-white/8">
+   768→              <AnimatePresence mode="wait">
+   769→                {winner ? (
+   770→                  <SoundWinner key="winner" nick={winner.nick} score={winner.score} />
+   771→                ) : showStage && currentSound ? (
+   772→                  <SoundStage
+   773→                    key="stage"
+   774→                    question={currentSound.question}
+   775→                    answer={currentSound.answer}
+   776→                    image={currentSound.image}
+   777→                    revealAnswer={revealAnswer}
+   778→                    revealQuestion={revealQuestion}
+   779→                    audioEl={audioEl}
+   780→                    soundActive={soundActive}
+   781→                  />
+   782→                ) : (
+   783→                  <SoundIdle key="idle" isFinished={isFinished} />
+   784→                )}
+   785→              </AnimatePresence>
+   786→            </div>
+   787→            {/* ZONA INFERIOR (50%): marcador con cards grandes */}
+   788→            <div className="flex-[1_1_50%] min-h-0 p-4 overflow-y-auto">
+   789→              <SoundLeaderboard participants={participants} winnerPid={contest.winnerPid} />
+   790→            </div>
+   791→          </>
+   792→        ) : null}
+   793→      </main>
+   794→
+   795→      {/* footer */}
+   796→      <footer className="relative z-20 shrink-0 h-9 border-t border-white/10 bg-black/70 flex items-center justify-center">
+   797→        <span className="text-[9px] font-extrabold tracking-[0.3em] uppercase text-[#6b6e78]">
+   798→          {isCosplay ? "Concurso Cosplayer · aplausos del público" : "Sonidos Gamer · adivina el juego"}
+   799→        </span>
+   800→      </footer>
+   801→    </div>
+   802→  );
+   803→}
+   804→

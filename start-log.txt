@@ -1,6 +1,6 @@
 ==========================================
 Next.js Windows launcher
-Date: 02/10/2026 10:59:17.72
+Date: 06/10/2026  7:16:16.50
 Folder: C:\Users\Node\Downloads\Gaming Fest2026\App
 Mode: dev
 URL: http://localhost:3000
@@ -13,32 +13,10 @@ URL: http://localhost:3000
 [3/5] Versions: 
 v24.16.0
 El sistema no encuentra la etiqueta por lotes especificada: PrintVersions
-[4/5] Checking port 3000...
-El proceso no tiene acceso al archivo porque est  siendo utilizado por otro proceso.
-[OK] Port 3000 is available.
+El sistema no encuentra la etiqueta por lotes especificada: CheckServer
 [5/5] Checking dependencies...
 El proceso no tiene acceso al archivo porque est  siendo utilizado por otro proceso.
-[INFO] Installing project dependencies...
-El proceso no tiene acceso al archivo porque est  siendo utilizado por otro proceso.
-npm warn deprecated intersection-observer@0.10.0: The Intersection Observer polyfill is no longer needed and can safely be removed. Intersection Observer has been Baseline since 2019.
-npm warn deprecated recharts@2.15.4: 1.x and 2.x branches are no longer active. Bump to Recharts v3 to receive latest features and bugfixes. See https://github.com/recharts/recharts/wiki/3.0-migration-guide
-npm warn deprecated eslint@9.39.5: This version is no longer supported. Please see https://eslint.org/version-support for other options.
-
-added 924 packages, and audited 925 packages in 2m
-
-296 packages are looking for funding
-  run `npm fund` for details
-
-13 vulnerabilities (4 moderate, 9 high)
-
-To address issues that do not require attention, run:
-  npm audit fix
-
-To address all issues (including breaking changes), run:
-  npm audit fix --force
-
-Run `npm audit` for details.
-[OK] Dependencies installed.
+[OK] node_modules is already installed.
 El proceso no tiene acceso al archivo porque est  siendo utilizado por otro proceso.
 
 [INFO] Prisma schema detected. Generating Prisma Client...
@@ -46,7 +24,7 @@ El proceso no tiene acceso al archivo porque est  siendo utilizado por otro proc
 Environment variables loaded from .env
 Prisma schema loaded from prisma\schema.prisma
 
-âœ” Generated Prisma Client (v6.19.3) to .\node_modules\@prisma\client in 50ms
+âœ” Generated Prisma Client (v6.19.3) to .\node_modules\@prisma\client in 113ms
 
 Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
 
@@ -71,12 +49,8 @@ El proceso no tiene acceso al archivo porque est  siendo utilizado por otro proc
 - Local:         http://localhost:3000
 - Network:       http://192.168.0.166:3000
 - Environments: .env
-âœ“ Ready in 3.9s
-âœ“ Running next.config.ts took 195ms
+âœ“ Ready in 5.0s
+âœ“ Running next.config.ts took 314ms
 
-â—‹ Compiling / ...
- GET / 200 in 6.1s (next.js: 5.7s, application-code: 379ms)
- GET /?v=show&t=v5fIicaacHC94sfiCvkt 200 in 66ms (next.js: 13ms, application-code: 52ms)
- GET /?obs=1 200 in 48ms (next.js: 7ms, application-code: 41ms)
- GET /?v=show&t=v5fIicaacHC94sfiCvkt 200 in 102ms (next.js: 23ms, application-code: 79ms)
-^C^C
+ GET / 200 in 3.4s (next.js: 3.0s, application-code: 428ms)
+^C^C¨Desea terminar el trabajo por lotes (S/N)? 

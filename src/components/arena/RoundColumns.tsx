@@ -128,6 +128,20 @@ export function RoundColumns({
           const isFinal = r === R - 1;
           return (
             <React.Fragment key={r}>
+            {/* el match de 3er lugar se juega ANTES de la Gran Final:
+                su columna va justo antes de la columna de la final */}
+            {isFinal && bracket.thirdPlace ? (
+              <ThirdPlaceColumn
+                bracket={bracket}
+                modality={modality}
+                times={times}
+                selectedId={selectedId}
+                onSelectMatch={onSelectMatch}
+                onPickWinner={onPickWinner}
+                showTimes={showTimes}
+                pcsMap={pcsMap}
+              />
+            ) : null}
             <section className="w-[264px] shrink-0 flex flex-col">
               {/* encabezado de ronda */}
               <div
@@ -253,20 +267,6 @@ export function RoundColumns({
             </React.Fragment>
           );
         })}
-
-        {/* sección 3er lugar — DESPUÉS de la Gran Final */}
-        {bracket.thirdPlace ? (
-          <ThirdPlaceColumn
-            bracket={bracket}
-            modality={modality}
-            times={times}
-            selectedId={selectedId}
-            onSelectMatch={onSelectMatch}
-            onPickWinner={onPickWinner}
-            showTimes={showTimes}
-            pcsMap={pcsMap}
-          />
-        ) : null}
       </div>
     </div>
   );

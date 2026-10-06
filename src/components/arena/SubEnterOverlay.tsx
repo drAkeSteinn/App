@@ -4,7 +4,12 @@ import React, { useEffect } from "react";
 import { motion } from "framer-motion";
 import confetti from "canvas-confetti";
 import { ArrowDownToLine, Repeat } from "lucide-react";
+import type { SubEnterData } from "@/lib/spotlight";
 import { FitLine } from "./MatchSpotlight";
+
+/* El tipo vive en lib/spotlight.ts (compartido con el overlay de OBS); se
+   re-exporta por compatibilidad. */
+export type { SubEnterData } from "@/lib/spotlight";
 
 /* ============================================================
    SubEnterOverlay — corte del visor cuando una reserva del
@@ -12,20 +17,28 @@ import { FitLine } from "./MatchSpotlight";
    con una animación de entrada (gold burst + glitch) y el
    tag del match donde entra. Se descarta sola (~4.5s) o al
    hacer click.
+
+   OPTIMIZADO: el burst dorado bajó de 110 a 60 partículas —
+   el confetti corre en su propio canvas + rAF y era el mayor
+   consumidor de CPU de este corte. La esencia (lluvia dorada)
+   se conserva.
+   Modo `transparent`: variante para el overlay de OBS (/?obs=anims).
    ============================================================ */
 
-export interface SubEnterData {
-  id: string; // clave única — para re-disparar animaciones
-  nick: string;
-  matchTag: string;
-}
-
-export function SubEnterOverlay({ data, onDone }: { data: SubEnterData; onDone: () => void }) {
+export function SubEnterOverlay({
+  data,
+  onDone,
+  transparent,
+}: {
+  data: SubEnterData;
+  onDone: () => void;
+  transparent?: boolean;
+}) {
   useEffect(() => {
     // burst dorado al entrar (respeta prefers-reduced-motion)
     const colors = ["#ffb830", "#ffe9b0", "#ffffff"];
     confetti({
-      particleCount: 70,
+      particleCount: 40,
       spread: 70,
       startVelocity: 38,
       origin: { y: 0.42 },
@@ -34,7 +47,7 @@ export function SubEnterOverlay({ data, onDone }: { data: SubEnterData; onDone: 
       scalar: 0.9,
     });
     confetti({
-      particleCount: 40,
+      particleCount: 20,
       spread: 110,
       decay: 0.92,
       scalar: 1.15,
@@ -55,8 +68,10 @@ export function SubEnterOverlay({ data, onDone }: { data: SubEnterData; onDone: 
       aria-label={`Reserva ${data.nick} entra al match`}
       className="absolute inset-0 z-[60] flex flex-col items-center justify-center gap-7 sm:gap-9 px-5 sm:px-10 overflow-hidden cursor-pointer select-none"
       style={{
-        background:
-          "radial-gradient(95% 75% at 50% 45%, rgba(20,16,4,0.82) 0%, rgba(12,10,4,0.93) 58%, rgba(7,7,8,0.98) 100%)",
+        /* transparent: velo suave para OBS — se ve la escena detrás */
+        background: transparent
+          ? "radial-gradient(95% 75% at 50% 45%, rgba(20,16,4,0.55) 0%, rgba(12,10,4,0.3) 58%, rgba(7,7,8,0) 100%)"
+          : "radial-gradient(95% 75% at 50% 45%, rgba(20,16,4,0.82) 0%, rgba(12,10,4,0.93) 58%, rgba(7,7,8,0.98) 100%)",
       }}
     >
       {/* líneas doradas arriba/abajo */}
@@ -100,7 +115,7 @@ export function SubEnterOverlay({ data, onDone }: { data: SubEnterData; onDone: 
             className="font-display italic uppercase leading-[0.95] whitespace-nowrap glitch-in text-silver-grad"
             style={{
               fontSize: "clamp(34px, 6vw, 80px)",
-              filter: "drop-shadow(0 0 30px rgba(255,184,48,0.55))",
+              filter: "drop-shadow(0 0 16px rgba(255,184,48,0.5))",
             }}
           >
             {data.nick || "—"}

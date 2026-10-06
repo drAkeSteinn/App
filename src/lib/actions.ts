@@ -28,6 +28,7 @@ import {
   type BracketDoc,
 } from "./bracket";
 import { MODALITY_LABEL, isTeamModality, matchPlayable, playersCapacity, slotsPerMatch, type Bracket, type MatchMember, type Modality, type Player, type Tournament } from "./types";
+import { clearArenaForReset } from "./arenaState";
 
 /* ============================================================
    Acciones Firestore (cliente) — colección: tournaments
@@ -59,6 +60,8 @@ export async function deleteTournament(id: string) {
   const players = await getDocs(pCol(id));
   players.forEach((d) => batch.delete(d.ref));
   batch.delete(bDoc(id));
+  // el estado de arena (podio, cartelera, banco) también se elimina con el torneo
+  batch.delete(doc(fdb, "tournaments", id, "arena", "state"));
   batch.delete(tDoc(id));
   await batch.commit();
 }
@@ -197,6 +200,8 @@ export async function launchMix(tid: string, players: Player[], tournament: Tour
   const bracket = buildBracket(parts, slotsPerMatch(modality));
   await setDoc(bDoc(tid), serializeBracket(bracket));
   await updateDoc(tDoc(tid), { status: "mixing" });
+  // torneo nuevo → sin podio residual ni señales viejas en el visor
+  await clearArenaForReset(tid);
 }
 
 /** Reinicia el torneo: borra el bracket y vuelve a registro abierto.
@@ -207,6 +212,8 @@ export async function deleteBracket(tid: string) {
   batch.delete(bDoc(tid)); // borrar doc inexistente es un no-op seguro
   batch.update(tDoc(tid), { status: "open", startAt: null });
   await batch.commit();
+  // reinicio completo → limpiar podio/cartelera/banco en el visor
+  await clearArenaForReset(tid);
 }
 
 /** Elimina TODOS los registros (oficiales + banco) para limpiar el torneo:
@@ -225,6 +232,7 @@ export async function wipeRegistrations(tid: string) {
   batch.delete(bDoc(tid));
   batch.update(tDoc(tid), { status: "open", startAt: null });
   await batch.commit();
+  await clearArenaForReset(tid);
 }
 
 /** Mutación atómica del bracket (transacción). */
@@ -433,11 +441,13 @@ export async function resetMatchScores(tid: string, r: number, m: number) {
 }
 
 /** Limpia marcadores, ganadores y DQs de TODO el bracket conservando las
-    asignaciones del mix. El torneo queda listo para jugar de nuevo. */
+    asignaciones del mix. El torneo queda listo para jugar de nuevo.
+    Al desaparecer el campeón, el podio también se limpia del visor. */
 export async function resetBracketResults(tid: string) {
   await mutateBracket(tid, (b) => {
     resetAllResults(b);
   });
+  await clearArenaForReset(tid);
 }
 
 export async function setStartAt(tid: string, ts: number | null) {
@@ -446,4 +456,39 @@ export async function setStartAt(tid: string, ts: number | null) {
 
 export async function setStatus(tid: string, status: Tournament["status"]) {
   await updateDoc(tDoc(tid), { status });
+}
+
+/* ---------------- Seguridad del flujo del torneo ---------------- */
+
+/** FASE 2 — Cerrar registros con validación: solo se permite si TODOS los
+    lugares oficiales están llenos. El banco de reservas es opcional. */
+export async function closeRegistration(tid: string, players: Player[], tournament: Tournament) {
+  const cap = playersCapacity(tournament);
+  const officials = players.filter((p) => p.seat === "off").length;
+  const missing = cap - officials;
+  if (missing > 0) {
+    throw new Error(
+      `No se puede cerrar el registro: faltan ${missing} jugador(es) para llenar los ${cap} lugares oficiales. El banco de reservas es opcional.`
+    );
+  }
+  await updateDoc(tDoc(tid), { status: "closed" });
+}
+
+/** FASE 5 — Detener torneo: pausa la transmisión (NO lo finaliza).
+    Se puede reabrir desde la fase 5 del flujo. */
+export async function stopTournament(tid: string) {
+  await updateDoc(tDoc(tid), { status: "stopped" });
+}
+
+/** FASE 5 — Finalizar torneo: SOLO es posible cuando la Gran Final ya tiene
+    ganador (champion definido). Un torneo realmente termina al resolverse
+    la final — nunca por detener la transmisión. */
+export async function finishTournament(tid: string, bracket: Bracket | null) {
+  if (!bracket) throw new Error("No hay bracket: lanza el mix antes de finalizar");
+  const finalMatch = bracket.rounds[bracket.rounds.length - 1]?.[0];
+  const champion = finalMatch && finalMatch.w !== null ? finalMatch.slots[finalMatch.w] : null;
+  if (!finalMatch || finalMatch.w === null || !champion?.pid) {
+    throw new Error("No se puede finalizar: la Gran Final todavía no tiene ganador");
+  }
+  await updateDoc(tDoc(tid), { status: "finished" });
 }

@@ -2,7 +2,7 @@
 
 import React, { useLayoutEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Clock, Trophy } from "lucide-react";
+import { Clock, Crown, Trophy } from "lucide-react";
 import type { Bracket } from "@/lib/types";
 import { roundLabel, fmtTime } from "@/lib/bracket";
 import { MatchCard, type RevealState } from "./MatchCard";
@@ -95,7 +95,10 @@ function RoundHeaders({ bracket, levels, mirror, pitch }: { bracket: Bracket; le
   );
 }
 
-function ChampionPlate({ bracket }: { bracket: Bracket }) {
+/* BANNER DE CAMPEÓN — LA pieza estelar de los brackets: vive ARRIBA de
+   todo el árbol (no en el centro) y en tamaño mucho mayor, para darle al
+   campeón el protagonismo que se merece. Solo aparece con campeón real. */
+function ChampionBanner({ bracket }: { bracket: Bracket }) {
   const R = bracket.rounds.length;
   const finalMatch = bracket.rounds[R - 1]?.[0];
   const champ = finalMatch && finalMatch.w !== null ? finalMatch.slots[finalMatch.w] : null;
@@ -103,22 +106,56 @@ function ChampionPlate({ bracket }: { bracket: Bracket }) {
     <AnimatePresence>
       {champ?.pid ? (
         <motion.div
-          initial={{ opacity: 0, y: 24, scale: 0.85 }}
+          initial={{ opacity: 0, y: -30, scale: 0.88 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.9 }}
-          transition={{ type: "spring", stiffness: 260, damping: 20 }}
-          className="mt-3 w-[var(--cw)] clip-card p-[2px] bg-[linear-gradient(160deg,#ffe9b0,#d99312)] shadow-[0_0_40px_rgba(255,184,48,0.4)]"
+          exit={{ opacity: 0, scale: 0.92 }}
+          transition={{ type: "spring", stiffness: 210, damping: 17 }}
+          className="relative z-20 mx-auto mb-4 w-max max-w-[94vw]"
+          aria-label="Campeón del torneo"
         >
-          <div className="plate-gold clip-card-sm px-2 py-2 flex items-center gap-2">
-            <Trophy size={18} className="shrink-0" />
-            <div className="min-w-0">
-              <div className="text-[8px] font-extrabold tracking-[0.3em] uppercase opacity-70">Campeón</div>
-              <div className="font-display italic text-[15px] uppercase leading-tight truncate">{champ.label}</div>
+          <div className="clip-card p-[3px] bg-[linear-gradient(160deg,#fff3c4,#ffc94d_30%,#d99312_62%,#ffe9b0)] shadow-[0_0_80px_rgba(255,184,48,0.55),0_18px_50px_rgba(0,0,0,0.55)]">
+            <div className="clip-card bg-[radial-gradient(130%_160%_at_50%_0%,rgba(255,184,48,0.2),rgba(12,9,2,0.98)_62%)] px-5 sm:px-10 py-3.5 sm:py-5 flex items-center gap-4 sm:gap-7">
+              <motion.span
+                initial={{ rotate: -24, scale: 0 }}
+                animate={{ rotate: 0, scale: 1 }}
+                transition={{ type: "spring", stiffness: 280, damping: 11, delay: 0.18 }}
+                className="shrink-0"
+              >
+                <Crown className="text-[#ffb830] drop-shadow-[0_0_16px_rgba(255,184,48,0.65)]" size={46} fill="#ffb830" />
+              </motion.span>
+              <div className="min-w-0 text-center">
+                <div className="text-[10px] sm:text-[12px] font-extrabold tracking-[0.5em] uppercase text-[#ffd977] leading-none">
+                  Campeón del torneo
+                </div>
+                <div
+                  className="font-display italic uppercase leading-[1.05] mt-1.5 max-w-[62vw] sm:max-w-[640px] truncate"
+                  style={{ fontSize: "clamp(30px, 4.8vw, 56px)" }}
+                >
+                  <span className="text-gold-grad drop-shadow-[0_3px_22px_rgba(255,184,48,0.35)]">{champ.label}</span>
+                </div>
+              </div>
+              <Trophy className="text-[#ffb830] shrink-0 -scale-x-100 drop-shadow-[0_0_16px_rgba(255,184,48,0.65)]" size={46} fill="#ffb830" />
             </div>
           </div>
         </motion.div>
       ) : null}
     </AnimatePresence>
+  );
+}
+
+/* Título de la Gran Final — EL match estelar: tipografía grande, trofeos y
+   líneas rojas a los lados. Mucho más protagónico que cualquier otra ronda. */
+function FinalTitle() {
+  return (
+    <div className="flex items-center justify-center gap-2.5 mb-4" aria-label="Gran Final">
+      <span className="h-[2px] w-8 sm:w-12 bg-[linear-gradient(90deg,transparent,#ff2440)]" aria-hidden />
+      <Trophy size={17} className="text-[#ffb830] shrink-0" fill="#ffb830" />
+      <span className="font-display italic text-[20px] uppercase tracking-[0.28em] text-silver-grad red-underline whitespace-nowrap leading-none pb-[6px] drop-shadow-[0_0_18px_rgba(255,184,48,0.35)]">
+        Gran Final
+      </span>
+      <Trophy size={17} className="text-[#ffb830] shrink-0 -scale-x-100" fill="#ffb830" />
+      <span className="h-[2px] w-8 sm:w-12 bg-[linear-gradient(270deg,transparent,#ff2440)]" aria-hidden />
+    </div>
   );
 }
 
@@ -162,24 +199,25 @@ export function BracketTree({
 
   if (R === 1) {
     return (
-      <div className="flex flex-col items-center pt-9">
-        <span className="text-[10px] font-extrabold uppercase tracking-[0.3em] text-[#ff2440] red-underline mb-3">
-          Gran Final
-        </span>
-        <MatchCard
-          bracket={bracket}
-          r={0}
-          m={0}
-          modality={modality}
-          mode={mode}
-          selected={selectedId === bracket.rounds[0][0].id}
-          onSelect={() => onSelectMatch?.(0, 0)}
-          scheduledStart={schedule.get(bracket.rounds[0][0].id)}
-          showTimes={showTimes}
-          reveal={revealFor(0, 0)}
-          pool={pool}
-        />
-        <ChampionPlate bracket={bracket} />
+      <div className="flex flex-col items-center">
+        <ChampionBanner bracket={bracket} />
+        <div className="flex flex-col items-center pt-10">
+          <FinalTitle />
+          <MatchCard
+            bracket={bracket}
+            r={0}
+            m={0}
+            modality={modality}
+            mode={mode}
+            big
+            selected={selectedId === bracket.rounds[0][0].id}
+            onSelect={() => onSelectMatch?.(0, 0)}
+            scheduledStart={schedule.get(bracket.rounds[0][0].id)}
+            showTimes={showTimes}
+            reveal={revealFor(0, 0)}
+            pool={pool}
+          />
+        </div>
       </div>
     );
   }
@@ -203,6 +241,74 @@ export function BracketTree({
     );
 
     return (
+      <div className="flex flex-col items-center">
+        <ChampionBanner bracket={bracket} />
+        <div className="relative pt-9 w-max mx-auto">
+          {/* encabezados de rondas */}
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 h-6 pointer-events-none" style={{ width: halfWidth * 2 + 312 }}>
+            <div className="absolute top-0 left-0 h-full" style={{ width: halfWidth }}>
+              <RoundHeaders bracket={bracket} levels={levels} pitch={pitch} />
+            </div>
+            <div className="absolute top-0 right-0 h-full" style={{ width: halfWidth }}>
+              <RoundHeaders bracket={bracket} levels={levels} mirror pitch={pitch} />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-center">
+            {/* mitad izquierda → slots superiores de la Gran Final */}
+            {leftKids.length === 1 ? (
+              <Node r={R - 2} m={leftKids[0].i} bare ctx={ctx} />
+            ) : (
+              <div className="bkids" style={{ "--k": leftKids.length } as React.CSSProperties}>
+                {leftKids.map((x) => kid(x, false))}
+              </div>
+            )}
+            {/* conector izquierda -> final */}
+            <div className="w-10 flex items-center shrink-0">
+              <FinalConn bracket={bracket} side="left" />
+            </div>
+            {/* centro: gran final */}
+            <div className="flex flex-col items-center shrink-0 px-1">
+              <FinalTitle />
+              <MatchCard
+                bracket={bracket}
+                r={R - 1}
+                m={0}
+                modality={modality}
+                mode={mode}
+                big
+                selected={selectedId === bracket.rounds[R - 1][0].id}
+                onSelect={() => onSelectMatch?.(R - 1, 0)}
+                scheduledStart={schedule.get(bracket.rounds[R - 1][0].id)}
+                showTimes={showTimes}
+                reveal={revealFor(R - 1, 0)}
+                pool={pool}
+              />
+            </div>
+            {/* conector derecha -> final */}
+            <div className="w-10 flex items-center shrink-0">
+              <FinalConn bracket={bracket} side="right" />
+            </div>
+            {/* mitad derecha (espejo) → slots restantes de la final */}
+            {rightKids.length === 1 ? (
+              <Node r={R - 2} m={rightKids[0].i} bare mirror ctx={ctx} />
+            ) : (
+              <div className="bkids rside" style={{ "--k": rightKids.length } as React.CSSProperties}>
+                {rightKids.map((x) => kid(x, true))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const levels = R - 1; // rondas por mitad (sin la final)
+  const halfWidth = levels * pitch - 64;
+
+  return (
+    <div className="flex flex-col items-center">
+      <ChampionBanner bracket={bracket} />
       <div className="relative pt-9 w-max mx-auto">
         {/* encabezados de rondas */}
         <div className="absolute top-0 left-1/2 -translate-x-1/2 h-6 pointer-events-none" style={{ width: halfWidth * 2 + 312 }}>
@@ -215,29 +321,24 @@ export function BracketTree({
         </div>
 
         <div className="flex items-center justify-center">
-          {/* mitad izquierda → slots superiores de la Gran Final */}
-          {leftKids.length === 1 ? (
-            <Node r={R - 2} m={leftKids[0].i} bare ctx={ctx} />
-          ) : (
-            <div className="bkids" style={{ "--k": leftKids.length } as React.CSSProperties}>
-              {leftKids.map((x) => kid(x, false))}
-            </div>
-          )}
+          {/* mitad izquierda */}
+          <div className="flex items-center">
+            <Node r={R - 2} m={0} bare ctx={ctx} />
+          </div>
           {/* conector izquierda -> final */}
           <div className="w-10 flex items-center shrink-0">
             <FinalConn bracket={bracket} side="left" />
           </div>
           {/* centro: gran final */}
           <div className="flex flex-col items-center shrink-0 px-1">
-            <span className="text-[10px] font-extrabold uppercase tracking-[0.3em] text-[#ff2440] red-underline mb-3 whitespace-nowrap">
-              Gran Final
-            </span>
+            <FinalTitle />
             <MatchCard
               bracket={bracket}
               r={R - 1}
               m={0}
               modality={modality}
               mode={mode}
+              big
               selected={selectedId === bracket.rounds[R - 1][0].id}
               onSelect={() => onSelectMatch?.(R - 1, 0)}
               scheduledStart={schedule.get(bracket.rounds[R - 1][0].id)}
@@ -245,86 +346,26 @@ export function BracketTree({
               reveal={revealFor(R - 1, 0)}
               pool={pool}
             />
-            <ChampionPlate bracket={bracket} />
+            {/* match de 3er lugar debajo de la final (solo S=2) — discreto:
+                el estelar es la Gran Final, este define SOLO el 3er puesto */}
+            <ThirdPlaceSection
+              bracket={bracket}
+              modality={modality}
+              mode={mode}
+              selectedId={selectedId}
+              onSelectMatch={onSelectMatch}
+              schedule={schedule}
+              showTimes={showTimes}
+            />
           </div>
           {/* conector derecha -> final */}
           <div className="w-10 flex items-center shrink-0">
             <FinalConn bracket={bracket} side="right" />
           </div>
-          {/* mitad derecha (espejo) → slots restantes de la final */}
-          {rightKids.length === 1 ? (
-            <Node r={R - 2} m={rightKids[0].i} bare mirror ctx={ctx} />
-          ) : (
-            <div className="bkids rside" style={{ "--k": rightKids.length } as React.CSSProperties}>
-              {rightKids.map((x) => kid(x, true))}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  const levels = R - 1; // rondas por mitad (sin la final)
-  const halfWidth = levels * pitch - 64;
-
-  return (
-    <div className="relative pt-9 w-max mx-auto">
-      {/* encabezados de rondas */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 h-6 pointer-events-none" style={{ width: halfWidth * 2 + 312 }}>
-        <div className="absolute top-0 left-0 h-full" style={{ width: halfWidth }}>
-          <RoundHeaders bracket={bracket} levels={levels} pitch={pitch} />
-        </div>
-        <div className="absolute top-0 right-0 h-full" style={{ width: halfWidth }}>
-          <RoundHeaders bracket={bracket} levels={levels} mirror pitch={pitch} />
-        </div>
-      </div>
-
-      <div className="flex items-center justify-center">
-        {/* mitad izquierda */}
-        <div className="flex items-center">
-          <Node r={R - 2} m={0} bare ctx={ctx} />
-        </div>
-        {/* conector izquierda -> final */}
-        <div className="w-10 flex items-center shrink-0">
-          <FinalConn bracket={bracket} side="left" />
-        </div>
-        {/* centro: gran final */}
-        <div className="flex flex-col items-center shrink-0 px-1">
-          <span className="text-[10px] font-extrabold uppercase tracking-[0.3em] text-[#ff2440] red-underline mb-3 whitespace-nowrap">
-            Gran Final
-          </span>
-          <MatchCard
-            bracket={bracket}
-            r={R - 1}
-            m={0}
-            modality={modality}
-            mode={mode}
-            selected={selectedId === bracket.rounds[R - 1][0].id}
-            onSelect={() => onSelectMatch?.(R - 1, 0)}
-            scheduledStart={schedule.get(bracket.rounds[R - 1][0].id)}
-            showTimes={showTimes}
-            reveal={revealFor(R - 1, 0)}
-            pool={pool}
-          />
-          <ChampionPlate bracket={bracket} />
-          {/* match de 3er lugar debajo de la final (solo S=2) */}
-          <ThirdPlaceSection
-            bracket={bracket}
-            modality={modality}
-            mode={mode}
-            selectedId={selectedId}
-            onSelectMatch={onSelectMatch}
-            schedule={schedule}
-            showTimes={showTimes}
-          />
-        </div>
-        {/* conector derecha -> final */}
-        <div className="w-10 flex items-center shrink-0">
-          <FinalConn bracket={bracket} side="right" />
-        </div>
-        {/* mitad derecha (espejo) */}
-        <div className="flex items-center">
-          <Node r={R - 2} m={1} mirror bare ctx={ctx} />
+          {/* mitad derecha (espejo) */}
+          <div className="flex items-center">
+            <Node r={R - 2} m={1} mirror bare ctx={ctx} />
+          </div>
         </div>
       </div>
     </div>
@@ -357,24 +398,32 @@ function ThirdPlaceSection({
   const bothEmpty = tp.slots.every((s) => !s.pid);
   const selected = selectedId === tp.id;
 
+  /* Card COMPACTA y discreta — el protagonismo del centro es de la Gran Final.
+     Bronce tenue al terminar, glow rojo solo cuando está en juego. */
   const body = (
-    <div className="w-[var(--cw)] select-none">
+    <div className="select-none" style={{ width: 196 }}>
       <div
-        className={`clip-card-sm p-[3px] transition-all ${
-          done ? "bg-[linear-gradient(160deg,#cd7f45,#94502a)]" : live ? "bg-[linear-gradient(160deg,#ff2440,#8f0a1e)]" : selected ? "bg-[linear-gradient(160deg,#ff2440,#8f0a1e)]" : "bg-transparent"
-        } ${live ? "live-glow" : ""}`}
+        className={`clip-card-sm transition-all border ${
+          done
+            ? "border-[#cd7f45]/45 bg-black/45"
+            : live
+              ? "border-[#e8102e]/60 bg-[#e8102e]/[0.05] live-glow"
+              : selected
+                ? "border-[#e8102e]/70 bg-black/45"
+                : "border-white/10 bg-black/40"
+        }`}
       >
-        <div className="bg-[#121216] clip-card-sm px-2.5 pt-2 pb-1.5">
-          <div className="flex items-center justify-between mb-[5px] px-[1px] h-[14px]">
-            <span className="text-[8.5px] font-extrabold uppercase tracking-[0.18em] text-[#cd7f45]">3ER LUGAR</span>
+        <div className="bg-[#101014]/85 clip-card-sm px-2 pt-1.5 pb-1">
+          <div className="flex items-center justify-between mb-[4px] px-[1px] h-[12px]">
+            <span className="text-[7.5px] font-extrabold uppercase tracking-[0.18em] text-[#cd7f45]/85">3ER LUGAR</span>
             <span className="flex items-center gap-1.5 min-w-0">
               {live ? (
-                <span className="text-[8.5px] font-extrabold tracking-[0.2em] text-[#ff2440] blink uppercase">● En juego</span>
+                <span className="text-[7.5px] font-extrabold tracking-[0.2em] text-[#ff2440] blink uppercase">● En juego</span>
               ) : done ? (
-                <span className="text-[8.5px] font-extrabold tracking-[0.2em] text-[#ffb830] uppercase">Finalizado</span>
-              ) : showTimes && schedule.get(tp.id) ? (
-                <span className="flex items-center gap-1 text-[8.5px] font-bold tracking-[0.08em] text-[#a9adb8] tabular-nums">
-                  <Clock size={8} />
+                <span className="text-[7.5px] font-extrabold tracking-[0.2em] text-[#cd7f45]/80 uppercase">Finalizado</span>
+              ) : showTimes && schedule.get(tp.id) && !bothEmpty ? (
+                <span className="flex items-center gap-1 text-[7.5px] font-bold tracking-[0.08em] text-[#6b6e78] tabular-nums">
+                  <Clock size={7} />
                   {fmtTime(schedule.get(tp.id)!)}
                 </span>
               ) : null}
@@ -386,37 +435,44 @@ function ThirdPlaceSection({
             const isDq = s.st === "dq";
             if (!s.pid) {
               return (
-                <div key={i} className="slot-wrap h-[30px] mb-[3px] border border-dashed border-white/15 bg-black/35 flex items-center gap-1.5 px-2">
-                  <span className="w-1.5 h-1.5 bg-white/15" aria-hidden />
-                  <span className="text-[9px] font-extrabold tracking-[0.22em] text-white/30 uppercase">Por definir</span>
+                <div key={i} className="slot-wrap h-[24px] mb-[2px] border border-dashed border-white/12 bg-black/35 flex items-center gap-1.5 px-1.5">
+                  <span className="w-1 h-1 bg-white/15" aria-hidden />
+                  <span className="text-[8px] font-extrabold tracking-[0.18em] text-white/25 uppercase">Por definir</span>
                 </div>
               );
             }
             const cls = [
-              "slot-wrap plate relative h-[30px] mb-[3px] flex items-stretch overflow-hidden",
+              "slot-wrap plate relative h-[24px] mb-[2px] flex items-stretch overflow-hidden",
               isDq ? "slot-dq" : "",
               s.st === "rep" ? "slot-sub" : "",
-              isWinner ? "slot-winner" : "",
-              isLoser && !isDq ? "slot-loser" : "",
-              live ? "slot-live" : "",
+              /* BRONCE para el 3er lugar: el metal pinta la card completa.
+                 El 4° se queda normal — sin sombreado. */
+              isWinner && !isDq ? "slot-bronze" : "",
+              live && !isWinner ? "slot-live" : "",
             ].filter(Boolean).join(" ");
             return (
               <div key={i} className={cls}>
-                <div className="red-badge clip-badge w-[34px] shrink-0 flex items-center justify-center">
-                  <span className="font-display italic text-[15px] leading-none pt-[1px]">{s.score}</span>
+                <div className="red-badge clip-badge w-[24px] shrink-0 flex items-center justify-center">
+                  <span className="font-display italic text-[11px] leading-none pt-[1px]">{s.score}</span>
                 </div>
-                <div className="flex-1 min-w-0 flex flex-col justify-center px-2 leading-none">
-                  <span className={`text-[11px] font-extrabold uppercase tracking-wide truncate ${isDq ? "text-[#ff9aa8] line-through" : ""}`}>
+                <div className="flex-1 min-w-0 flex flex-col justify-center px-1.5 leading-none">
+                  <span className={`text-[9.5px] font-extrabold uppercase tracking-wide truncate ${
+                    isDq ? "text-[#ff9aa8] line-through" : isWinner && !isDq ? "metal-name" : ""
+                  }`}>
                     {s.label}
                   </span>
                   {modality > 1 && s.members.length > 1 ? (
-                    <span className={`text-[8.5px] font-bold truncate mt-[2px] ${isDq ? "text-[#ff8095]/70" : "text-[#5a5d68]"}`}>
+                    <span className={`text-[7.5px] font-bold truncate mt-[1px] ${
+                      isDq ? "text-[#ff8095]/70" : isWinner && !isDq ? "metal-sub" : "text-[#5a5d68]"
+                    }`}>
                       {s.members.map((mm) => (mm.dq ? `✗${mm.nick}` : mm.nick)).join(" · ")}
                     </span>
                   ) : null}
                 </div>
-                {isWinner ? (
-                  <span className="plate-gold chip clip-tag self-center mr-1.5 text-[8px] px-1.5 py-[2px] tracking-[0.1em]">3°</span>
+                {isWinner && !isDq ? (
+                  <span className="chip clip-tag metal-chip metal-chip-bronze self-center mr-1 text-[7px] px-1 py-[1px] font-extrabold tracking-[0.08em] uppercase">3°</span>
+                ) : isLoser && !isDq ? (
+                  <span className="chip clip-tag self-center mr-1 text-[7px] px-1 py-[1px] font-extrabold tracking-[0.08em] uppercase bg-white/[0.07] text-[#8e919c] border border-white/15">4°</span>
                 ) : null}
                 <div className="dq-stamp"><span>DQ</span></div>
               </div>
@@ -428,17 +484,13 @@ function ThirdPlaceSection({
   );
 
   return (
-    <div className="flex flex-col items-center gap-2 mt-4">
-      <div className="flex items-center justify-center gap-[var(--cw)] w-full">
-        <div className="h-[2px] w-10 bg-[var(--connector)]" aria-hidden />
-        <div className="h-[2px] w-10 bg-[var(--connector)]" aria-hidden />
-      </div>
-      <span className="text-[9px] font-extrabold uppercase tracking-[0.24em] text-[#cd7f45] red-underline whitespace-nowrap">
-        3er Lugar
+    <div className="flex flex-col items-center gap-1.5 mt-5">
+      <span className="text-[8px] font-extrabold uppercase tracking-[0.2em] text-[#cd7f45]/80 whitespace-nowrap">
+        Disputa por el 3er lugar
       </span>
       {mode === "admin" ? (
         <motion.div
-          whileHover={{ scale: 1.015 }}
+          whileHover={{ scale: 1.01 }}
           whileTap={{ scale: 0.99 }}
           onClick={() => onSelectMatch?.(-1, 0)}
           role="button"
@@ -456,9 +508,9 @@ function ThirdPlaceSection({
         </motion.div>
       ) : (
         <motion.div
-          initial={{ opacity: 0, y: 10 }}
+          initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.3 }}
+          transition={{ duration: 0.4, delay: 0.45 }}
         >
           {body}
         </motion.div>

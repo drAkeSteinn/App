@@ -11,6 +11,15 @@ import { FitLine } from "./MatchSpotlight";
 
 /* ============================================================
    Podio de campeones — overlay para el visor de espectadores
+   y para el overlay de animaciones de OBS (/?obs=anims).
+
+   OPTIMIZADO: el confetti bajó de 220 a ~110 partículas en el
+   burst inicial y la lluvia interminable ahora se DETIENE sola
+   tras 12 s (canvas-confetti corre su propio canvas + rAF: las
+   partículas perpetuas eran el mayor consumidor de CPU del podio).
+   Se quitó backdrop-blur de pantalla completa y los destellos
+   verticales bajaron de 5 a 3. La esencia (celebración con
+   lluvia + destellos) se conserva.
    ============================================================ */
 
 const COLORS = ["#ff2440", "#ffffff", "#ffb830"];
@@ -59,7 +68,7 @@ function Step({
             <div style={{ width: place === "1" ? "min(420px, 88vw)" : place === "2" ? "min(320px, 80vw)" : "min(260px, 72vw)" }}>
               <FitLine>
                 <span
-                  className={`font-display italic uppercase leading-none whitespace-nowrap text-white drop-shadow-[0_4px_18px_rgba(255,36,64,0.45)] text-center`}
+                  className={`font-display italic uppercase leading-none whitespace-nowrap text-white drop-shadow-[0_4px_10px_rgba(255,36,64,0.45)] text-center`}
                   style={{ fontSize: place === "1" ? "clamp(30px, 3.2vw, 42px)" : place === "2" ? "clamp(22px, 2.3vw, 30px)" : "clamp(17px, 1.8vw, 22px)" }}
                 >
                   {s.label}
@@ -93,32 +102,43 @@ export function Podium({
   bracket,
   tournament,
   onClose,
+  transparent,
+  hideControls,
 }: {
   bracket: Bracket;
   tournament: Tournament;
   onClose: () => void;
+  /** modo overlay OBS: velo suave en vez de fondo casi opaco */
+  transparent?: boolean;
+  /** oculta el botón "Ver brackets" (overlay OBS: sin interacción) */
+  hideControls?: boolean;
 }) {
   const { champion, second, thirds } = getPodium(bracket);
 
   useEffect(() => {
     const fire = (ratio: number, opts: confetti.Options) =>
-      confetti({ colors: COLORS, disableForReducedMotion: true, ...opts, particleCount: Math.floor(220 * ratio) });
-    fire(0.25, { spread: 26, startVelocity: 55, origin: { y: 0.62 } });
+      confetti({ colors: COLORS, disableForReducedMotion: true, ...opts, particleCount: Math.floor(110 * ratio) });
+    fire(0.3, { spread: 26, startVelocity: 55, origin: { y: 0.62 } });
+    fire(0.3, { spread: 100, decay: 0.91, scalar: 0.85, origin: { y: 0.62 } });
     fire(0.2, { spread: 60, origin: { y: 0.62 } });
-    fire(0.35, { spread: 100, decay: 0.91, scalar: 0.85, origin: { y: 0.62 } });
-    fire(0.1, { spread: 120, startVelocity: 25, decay: 0.92, scalar: 1.2, origin: { y: 0.62 } });
-    fire(0.1, { spread: 120, startVelocity: 45, origin: { y: 0.62 } });
+    fire(0.2, { spread: 120, startVelocity: 45, origin: { y: 0.62 } });
+    /* lluvia breve de celebración: pocas ráfagas y SE DETIENE sola —
+       antes disparaba 36 partículas cada 2.6s PARA SIEMPRE */
     const iv = setInterval(() => {
       confetti({
-        particleCount: 36,
+        particleCount: 18,
         spread: 85,
         startVelocity: 38,
         colors: COLORS,
         disableForReducedMotion: true,
         origin: { x: 0.12 + Math.random() * 0.76, y: Math.random() * 0.35 },
       });
-    }, 2600);
-    return () => clearInterval(iv);
+    }, 4000);
+    const stop = setTimeout(() => clearInterval(iv), 12_000);
+    return () => {
+      clearInterval(iv);
+      clearTimeout(stop);
+    };
   }, []);
 
   return (
@@ -126,11 +146,15 @@ export function Podium({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="absolute inset-0 z-40 flex flex-col items-center justify-center overflow-y-auto bg-[radial-gradient(85%_70%_at_50%_30%,rgba(232,16,46,0.22),rgba(7,7,8,0.96)_70%)] backdrop-blur-[2px] px-4 py-8"
+      className={`absolute inset-0 z-40 flex flex-col items-center justify-center overflow-y-auto px-4 py-8 ${
+        transparent
+          ? "bg-[radial-gradient(85%_70%_at_50%_30%,rgba(232,16,46,0.2),rgba(7,7,8,0.5)_70%)]"
+          : "bg-[radial-gradient(85%_70%_at_50%_30%,rgba(232,16,46,0.22),rgba(7,7,8,0.96)_70%)]"
+      }`}
     >
-      {/* destellos verticales */}
+      {/* destellos verticales (3, transform-only) */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden>
-        {[18, 38, 50, 62, 82].map((x, i) => (
+        {[24, 50, 76].map((x, i) => (
           <div
             key={x}
             className="absolute top-0 h-[70%] w-[90px] opacity-25"
@@ -166,12 +190,14 @@ export function Podium({
         <Step height={100} place="3" entries={thirds.slice(0, 2)} tone="bronze" delay={0.45} />
       </div>
 
-      <div className="relative mt-2">
-        <Btn variant="dark" small onClick={onClose}>
-          <X size={12} />
-          Ver brackets
-        </Btn>
-      </div>
+      {!hideControls ? (
+        <div className="relative mt-2">
+          <Btn variant="dark" small onClick={onClose}>
+            <X size={12} />
+            Ver brackets
+          </Btn>
+        </div>
+      ) : null}
     </motion.div>
   );
 }

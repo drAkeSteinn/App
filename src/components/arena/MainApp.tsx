@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ExternalLink, Eye, Loader2, MonitorPlay, Radio, Settings2, Sparkles, Trophy, UserPlus } from "lucide-react";
+import { ExternalLink, Eye, Loader2, MonitorPlay, Radio, Settings2, Sparkles, Trophy, UserPlus, Clapperboard } from "lucide-react";
 import { useBracket, usePlayers, useTournaments } from "@/lib/hooks";
 import { useContests } from "@/lib/contestHooks";
 import type { Tournament } from "@/lib/types";
@@ -83,6 +83,13 @@ export function MainApp() {
     window.open("/?obs=1", "_blank", "noopener");
   };
 
+  /* Animaciones OBS: URL única (/?obs=anims) — SOLO las animaciones
+     (VS/ganador, reserva que entra, podio) con fondo transparente.
+     Sirve para todos los torneos y concursos: la URL nunca cambia. */
+  const openObsAnims = () => {
+    window.open("/?obs=anims", "_blank", "noopener");
+  };
+
   const goRegister = (id: string) => {
     setTid(id);
     setTab("registro");
@@ -96,13 +103,16 @@ export function MainApp() {
     <div className="min-h-screen flex flex-col relative">
       <Backdrop variant="app" />
 
-      {/* ================= HEADER ================= */}
+      {/* ================= HEADER =================
+          Lenguaje visual unificado: dos "docks" segmentados (navegación y
+          salidas) con la MISMA altura/tipografía/corte en todos los controles,
+          y el selector de torneo junto a las salidas de transmisión. */}
       <header className="sticky top-0 z-40 border-b border-white/10 bg-[#070708]/85 backdrop-blur-md">
-        <div className="mx-auto max-w-[1500px] px-4 sm:px-6 h-[64px] flex items-center gap-3 sm:gap-5 overflow-x-auto sm:overflow-x-visible no-scrollbar">
-          {/* brand */}
+        <div className="mx-auto max-w-[1500px] px-4 sm:px-6 h-[64px] flex items-center gap-2.5 sm:gap-4 overflow-x-auto no-scrollbar">
+          {/* brand (el texto se oculta < xl para dar espacio a la navegación) */}
           <div className="flex items-center gap-2.5 shrink-0">
             <Emblem size={34} />
-            <div className="leading-none hidden sm:block">
+            <div className="leading-none hidden xl:block">
               <div className="font-display italic text-[17px] uppercase">
                 <span className="text-white">Arena</span> <span className="text-red-grad">Torneos</span>
               </div>
@@ -112,16 +122,18 @@ export function MainApp() {
             </div>
           </div>
 
-          {/* nav tabs */}
-          <nav className="flex items-center gap-1 p-1 bg-black/40 border border-white/10 overflow-x-auto" aria-label="Secciones">
+          {/* dock de navegación */}
+          <nav className="hdr-dock shrink-0" aria-label="Secciones">
             {TABS.map((t) => (
               <button
                 key={t.id}
                 type="button"
                 onClick={() => setTab(t.id)}
                 aria-current={tab === t.id ? "page" : undefined}
-                className={`tab-btn clip-tag px-3 sm:px-4 py-2 text-[10px] font-extrabold uppercase tracking-[0.14em] whitespace-nowrap flex items-center gap-1.5 ${
-                  tab === t.id ? "active" : "text-[#8e919c] hover:text-white"
+                className={`hdr-ctl clip-tag tab-btn px-2.5 xl:px-3 ${
+                  tab === t.id
+                    ? "active"
+                    : "text-[#8e919c] hover:text-white bg-white/[0.03] hover:bg-white/[0.07]"
                 }`}
               >
                 {t.icon}
@@ -130,11 +142,10 @@ export function MainApp() {
             ))}
           </nav>
 
-          {/* selector torneo + visor */}
-          <div className="ml-auto flex items-center gap-2 min-w-0">
+          {/* cluster derecho: torneo activo + salidas de transmisión */}
+          <div className="ml-auto flex items-center gap-2.5 sm:gap-3">
             <Select
-              compact
-              className="w-[150px] sm:w-[230px]"
+              className="w-[150px] xl:w-[190px] min-w-[120px]"
               placeholder="TORNEO…"
               value={tid}
               onChange={setTid}
@@ -145,28 +156,41 @@ export function MainApp() {
                 logo: t.logo,
               }))}
             />
-            <button
-              type="button"
-              onClick={openObsCards}
-              title="Abrir las cards para OBS (nueva ventana) — URL general, sirve para todos los torneos"
-              aria-label="Abrir cards de OBS en nueva ventana"
-              className="btn-press clip-btn obs-btn px-3 sm:px-4 py-2.5 text-[10px] font-extrabold uppercase tracking-[0.14em] flex items-center gap-1.5"
-            >
-              <MonitorPlay size={13} />
-              <span className="hidden md:inline">Cards OBS</span>
-              <ExternalLink size={10} />
-            </button>
-            <button
-              type="button"
-              onClick={openViewer}
-              title="Abrir visor para espectadores (nueva pestaña) — muestra el torneo activo"
-              aria-label="Abrir visor para espectadores"
-              className="btn-press clip-btn red-badge px-3 sm:px-4 py-2.5 text-[10px] font-extrabold uppercase tracking-[0.14em] flex items-center gap-1.5"
-            >
-              <Eye size={13} />
-              <span className="hidden sm:inline">Visor</span>
-              <ExternalLink size={10} />
-            </button>
+
+            {/* dock de salidas: Animaciones OBS · Cards OBS · Visor */}
+            <div className="hdr-dock shrink-0" role="group" aria-label="Salidas de transmisión">
+              <button
+                type="button"
+                onClick={openObsAnims}
+                title="Abrir solo las animaciones para OBS (nueva ventana) — VS, ganador, reserva y podio con fondo transparente. URL general para todos los torneos y concursos"
+                aria-label="Abrir animaciones de OBS en nueva ventana"
+                className="hdr-ctl clip-tag obs-anim-btn px-3"
+              >
+                <Clapperboard size={13} className="text-[#ffd25e]/85" />
+                <span className="hidden min-[1500px]:inline">Animaciones OBS</span>
+              </button>
+              <button
+                type="button"
+                onClick={openObsCards}
+                title="Abrir las cards para OBS (nueva ventana) — URL general, sirve para todos los torneos"
+                aria-label="Abrir cards de OBS en nueva ventana"
+                className="hdr-ctl clip-tag obs-btn px-3"
+              >
+                <MonitorPlay size={13} className="text-[#ffb3be]/85" />
+                <span className="hidden min-[1500px]:inline">Cards OBS</span>
+              </button>
+              <button
+                type="button"
+                onClick={openViewer}
+                title="Abrir visor para espectadores (nueva pestaña) — muestra el torneo activo"
+                aria-label="Abrir visor para espectadores"
+                className="hdr-ctl clip-tag red-badge px-3"
+              >
+                <Eye size={13} />
+                <span className="hidden sm:inline">Visor</span>
+                <ExternalLink size={10} className="opacity-60 hidden min-[1500px]:inline" />
+              </button>
+            </div>
           </div>
         </div>
 

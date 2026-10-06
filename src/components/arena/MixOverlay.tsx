@@ -12,7 +12,8 @@ import { Check, Shuffle } from "lucide-react";
 function RollingBig({ pool }: { pool: string[] }) {
   const [i, setI] = useState(0);
   useEffect(() => {
-    const t = setInterval(() => setI((v) => (v + 1) % Math.max(1, pool.length)), 110);
+    /* 130ms: sigue frenético pero con ~25% menos renders que 110ms */
+    const t = setInterval(() => setI((v) => (v + 1) % Math.max(1, pool.length)), 130);
     return () => clearInterval(t);
   }, [pool.length]);
   return (
@@ -42,10 +43,12 @@ export function MixOverlay({
       exit={{ opacity: 0, y: -30 }}
       className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none"
     >
-      {/* panel central */}
+      {/* panel central — OPTIMIZADO: sin backdrop-blur (el fondo del panel
+          ya es 94% opaco; el blur de pantalla completa costaba caro durante
+          TODO el shuffle y no se apreciaba) */}
       <motion.div
         layout
-        className="relative clip-card border border-[#e8102e]/40 bg-[linear-gradient(165deg,rgba(232,16,46,0.16),rgba(7,7,8,0.94)_45%)] backdrop-blur-md px-8 sm:px-14 py-8 sm:py-10 shadow-[0_40px_120px_rgba(0,0,0,0.8),0_0_80px_rgba(232,16,46,0.25)] max-w-[92vw] overflow-hidden"
+        className="relative clip-card border border-[#e8102e]/40 bg-[linear-gradient(165deg,rgba(232,16,46,0.16),rgba(7,7,8,0.94)_45%)] px-8 sm:px-14 py-8 sm:py-10 shadow-[0_40px_120px_rgba(0,0,0,0.8),0_0_80px_rgba(232,16,46,0.25)] max-w-[92vw] overflow-hidden"
       >
         {/* franjas hazard esquinas */}
         <div className="absolute top-0 left-0 w-24 h-3 hazard opacity-80" aria-hidden />

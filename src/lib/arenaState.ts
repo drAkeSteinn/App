@@ -92,6 +92,17 @@ export async function setShowPodium(tid: string, show: boolean) {
   await setDoc(arenaRef(tid), { showPodium: show } as Partial<ArenaState>, { merge: true });
 }
 
+/** Limpia TODAS las señales transitorias del visor al reiniciar el torneo:
+    podio (residual), selector de banco y cartelera. Sin esto, al actualizar
+    o reabrir el visor reaparecería un podio viejo que ya no corresponde. */
+export async function clearArenaForReset(tid: string) {
+  await setDoc(
+    arenaRef(tid),
+    { showPodium: false, bankPick: null, schedOpen: false } as Partial<ArenaState>,
+    { merge: true }
+  );
+}
+
 /** El admin disparó una acción con sonido → avisa al visor para reproducirlo. */
 export async function emitSound(tid: string, event: string) {
   await setDoc(arenaRef(tid), { sound: { event, id: Date.now() } } as Partial<ArenaState>, {
