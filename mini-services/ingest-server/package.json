@@ -2,6 +2,7 @@
   "name": "ingest-server",
   "private": true,
   "scripts": {
-    "dev": "bun --hot index.ts"
+    "dev": "node index.js",
+    "start": "node index.js"
   }
 }

@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import { AnimatePresence, motion } from "framer-motion";
-import { CalendarClock, Lock, Timer, Trophy, UserPlus, Users, Zap } from "lucide-react";
+import { CalendarClock, Lock, ScanQrCode, Timer, Trophy, UserPlus, Users, Zap } from "lucide-react";
 import type { Player, Tournament } from "@/lib/types";
 import { playersCapacity } from "@/lib/types";
 import { fmtDateLong, fmtTime, groupParticipants } from "@/lib/bracket";
@@ -95,16 +96,20 @@ export function RegistrationBroadcast({
       ? ["REGISTROS CERRADOS", "ESPERANDO INICIO"]
       : ["REGISTRO ABIERTO", "ESPERANDO JUGADORES"];
 
+  /* En xl el visor se divide en dos columnas: contenido a la izquierda y
+     el rail del QR de WhatsApp a la derecha (altura completa). En pantallas
+     menores todo apila en columna y el QR queda entre los contadores y el
+     cuadro de asientos — arriba de los nicks. */
   return (
     <motion.div
       key="reg"
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -12 }}
-      className="absolute inset-0 flex flex-col overflow-y-auto px-5 sm:px-10 py-5 gap-5"
+      className="absolute inset-0 flex flex-col overflow-y-auto px-5 sm:px-10 py-5 gap-5 xl:grid xl:grid-cols-[minmax(0,1fr)_320px] xl:grid-rows-[auto_auto_minmax(0,1fr)_auto]"
     >
       {/* ===== encabezado de estado ===== */}
-      <div className="flex flex-wrap items-center gap-3 shrink-0">
+      <div className="flex flex-wrap items-center gap-3 shrink-0 xl:col-span-2">
         <span className="slashes w-9 h-4 inline-block" aria-hidden />
         <span className="text-[11px] font-extrabold tracking-[0.4em] uppercase text-[#ff8095]">Modo registro</span>
         <StatusChip status={t.status} />
@@ -122,7 +127,7 @@ export function RegistrationBroadcast({
       </div>
 
       {/* ===== contadores grandes ===== */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-4 shrink-0">
+      <div className="grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-4 shrink-0 xl:col-start-1 xl:row-start-2">
         {/* lugares principales */}
         <div className="panel clip-card p-5 relative overflow-hidden">
           <div className="absolute top-0 left-0 w-20 h-2.5 hazard opacity-70" aria-hidden />
@@ -197,8 +202,53 @@ export function RegistrationBroadcast({
         </div>
       </div>
 
+      {/* ===== rail: QR del canal de WhatsApp =====
+          Canal donde se anuncian los matches. En xl vive como columna fija
+          a la derecha (fila 2→4); en pantallas menores queda entre los
+          contadores y los asientos, centrado. */}
+      <motion.aside
+        initial={{ opacity: 0, scale: 0.9, y: 12 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ type: "spring", stiffness: 110, damping: 18, delay: 0.15 }}
+        className="wa-qr-panel panel clip-card shrink-0 w-full max-w-[430px] mx-auto xl:mx-0 xl:max-w-none xl:col-start-2 xl:row-start-2 xl:row-end-5 p-5 xl:p-6 flex flex-col items-center justify-center gap-4 text-center"
+        aria-label="Código QR del canal de WhatsApp con los anuncios de los matches"
+      >
+        <div className="flex flex-col items-center gap-1.5">
+          <span className="flex items-center gap-2">
+            <span className="wa-dot w-2 h-2 rounded-full bg-[#25D366]" aria-hidden />
+            <span className="text-[11px] font-extrabold tracking-[0.32em] uppercase text-[#25D366]">
+              Canal de WhatsApp
+            </span>
+          </span>
+          <span className="label-cap">Síguenos para no perderte nada</span>
+        </div>
+
+        <div className="wa-qr-frame">
+          <Image
+            src="/whatsapp-qr.png"
+            alt="Código QR del canal de WhatsApp: anuncios de los matches"
+            width={800}
+            height={800}
+            priority
+            unoptimized
+            className="block w-[188px] sm:w-[216px] xl:w-[236px] 2xl:w-[248px] h-auto"
+          />
+          <span className="wa-qr-scan" aria-hidden />
+        </div>
+
+        <div className="flex flex-col items-center gap-1.5">
+          <span className="font-display italic uppercase text-[15px] sm:text-[17px] leading-tight text-silver-grad">
+            Escanea y únete
+          </span>
+          <span className="flex items-center gap-1.5 text-[9px] font-extrabold tracking-[0.24em] uppercase text-[#8e919c]">
+            <ScanQrCode size={12} className="text-[#25D366]" />
+            Anuncios de los matches
+          </span>
+        </div>
+      </motion.aside>
+
       {/* ===== grid de asientos ===== */}
-      <div className="panel clip-card p-5 flex-1 min-h-0 flex flex-col">
+      <div className="panel clip-card p-5 flex-1 min-h-0 flex flex-col xl:col-start-1 xl:row-start-3">
         <div className="flex items-center gap-2 mb-3 shrink-0">
           <Trophy size={13} className="text-[#e8102e]" />
           <span className="label-cap">Cuadro de lugares</span>
@@ -228,7 +278,7 @@ export function RegistrationBroadcast({
       </div>
 
       {/* ===== countdown + marquee ===== */}
-      <div className="shrink-0 flex flex-col items-center gap-4 pb-2">
+      <div className="shrink-0 flex flex-col items-center gap-4 pb-2 xl:col-start-1 xl:row-start-4">
         {hasCountdown ? (
           onCountdownClick ? (
             <button

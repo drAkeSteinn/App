@@ -52,6 +52,7 @@ prompt
 server.log
 # Skills directory
 /skills/
+
 # Videos de espera (contenido runtime de la carpeta videos/)
 /videos/*
 !/videos/.gitkeep

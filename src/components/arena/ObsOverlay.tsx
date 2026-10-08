@@ -117,7 +117,7 @@ function ObsNick({ nick }: { nick: string }) {
 /* ---------------- Card individual (barra: PC + nick + marcador) ---------------- */
 
 interface ObsCardData {
-  pc: string;
+  pc: string | null;
   nick: string;
   score: number;
   isWinner: boolean;
@@ -134,7 +134,7 @@ function ObsCard({
   data: ObsCardData;
   barW: string;
   draggable?: boolean;
-  onDragStart?: (pc: string) => void;
+  onDragStart?: (pc: string | null) => void;
 }) {
   return (
     <div

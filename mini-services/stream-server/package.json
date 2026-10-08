@@ -1,1 +1,8 @@
-{"name":"stream-server","private":true,"scripts":{"dev":"./mediamtx mediamtx.yml"}}
+{
+  "name": "stream-server",
+  "private": true,
+  "scripts": {
+    "dev": "node index.js",
+    "start": "node index.js"
+  }
+}

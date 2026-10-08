@@ -18,7 +18,7 @@ import type { Bracket, Player, Tournament } from "@/lib/types";
 import { MODALITY_LABEL, playersCapacity } from "@/lib/types";
 import { computeSchedule, getPodium, matchTag, totalMatches } from "@/lib/bracket";
 import { computeBank } from "@/lib/bank";
-import { setShowPodium, useArenaState } from "@/lib/arenaState";
+import { setSchedOpen, setShowPodium, useArenaState } from "@/lib/arenaState";
 import { useDramaCuts } from "@/lib/spotlight";
 import { useActiveTournament } from "@/lib/activeTournament";
 import { useBracket, usePlayers, useTournaments } from "@/lib/hooks";
@@ -590,8 +590,6 @@ export function SpectatorView({ tid }: { tid: string | null }) {
           {/* MODO REGISTRO */}
           {mode === "reg" ? (
             <div key="reg" className="absolute inset-0 flex flex-col">
-              {/* Transmisión OBS: solo cuando el admin activó "Mostrar transmicion" */}
-              <ObsStreamStage visible={transmissionVisible} />
               <div className="flex-1 min-h-0 relative">
                 <RegistrationBroadcast
                   t={tournament}
@@ -615,7 +613,8 @@ export function SpectatorView({ tid }: { tid: string | null }) {
               {/* PREGAME (registro abierto o cerrado, vista brackets manual) */}
               {status === "open" || status === "closed" ? <Pregame key="pre" t={tournament} players={players} /> : null}
 
-              {/* MIXING / LIVE / FINISHED: bracket */}
+              {/* MIXING / LIVE / FINISHED: bracket a tamaño completo — la
+                  transmisión del OBS flota ENCIMA como overlay (ver abajo) */}
               {status !== "open" && status !== "closed" ? (
                 <motion.div
                   key="bracket"
@@ -625,10 +624,6 @@ export function SpectatorView({ tid }: { tid: string | null }) {
                   transition={{ duration: 0.5 }}
                   className={`absolute inset-0 flex flex-col ${mixing && !mixDone ? "opacity-30" : ""} transition-opacity duration-500`}
                 >
-                  {/* Transmisión OBS: video centrado encima de los brackets con el
-                      tamaño en píxeles configurado. SOLO cuando el admin activó
-                      "Mostrar transmicion" y hay señal (si no, brackets normales). */}
-                  <ObsStreamStage visible={transmissionVisible} />
                   <div className="flex-1 min-h-0">
                     {bracket ? (
                       <FitStage deps={[bracket, tournament.modality, status]} maxScale={1.05} minScale={0.3} className="w-full h-full">
@@ -653,6 +648,12 @@ export function SpectatorView({ tid }: { tid: string | null }) {
             </>
           )}
         </AnimatePresence>
+
+        {/* Transmisión OBS: overlay CENTRADO y POR ENCIMA del contenido (los
+            brackets siguen a tamaño completo DETRÁS, sin empujarlos ni encogerlos).
+            Se oculta mientras el caster elige reservas del banco para poder
+            leerlas bien. */}
+        <ObsStreamStage visible={transmissionVisible && mode !== "bank"} />
 
         {/* overlay de mix */}
         <AnimatePresence>
@@ -717,7 +718,7 @@ export function SpectatorView({ tid }: { tid: string | null }) {
               schedule={schedule}
               tournament={tournament}
               open
-              onClose={() => setSchedOpen(false)}
+              onClose={() => effectiveTid && setSchedOpen(effectiveTid, false)}
             />
           ) : null}
         </AnimatePresence>

@@ -183,28 +183,51 @@ function AgendaTickerCard({ ev }: { ev: AgendaEvent }) {
   );
 }
 
-/* ---------------- barra inferior: agenda de HOY desfilando ---------------- */
+/* ---------------- barra inferior: agenda de HOY desfilando ----------------
+   CARRUSEL COMPLETO E INFINITO: la cinta es [unidad, unidad], donde una
+   unidad = TODAS las actividades del día repetidas las veces necesarias
+   para cubrir el ancho de la barra (se MIDE, no se estima). La animación
+   recorre exactamente una unidad (-50%): al pasar la última actividad
+   aparece de nuevo la primera, sin huecos ni saltos, para siempre. */
 function AgendaTickerBar({ events }: { events: AgendaEvent[] }) {
-  const trackRef = useRef<HTMLDivElement | null>(null);
-  const [dur, setDur] = useState(40);
+  const barRef = useRef<HTMLDivElement | null>(null);
+  const unitRef = useRef<HTMLDivElement | null>(null);
+  /* pasadas completas dentro de una unidad (se calcula midiendo) */
+  const [reps, setReps] = useState(1);
+  /* duración real de la vuelta (0 = aún sin medir → cinta en pausa) */
+  const [dur, setDur] = useState(0);
 
-  /* repite el set hasta llenar holgadamente una vuelta de la cinta */
-  const set = useMemo(() => {
-    const minPx = 1800; // ancho objetivo de una vuelta
-    const estPerCard = 300; // estimación conservadora por card
-    const reps = Math.max(1, Math.ceil(minPx / Math.max(1, events.length * estPerCard)));
+  const unit = useMemo(() => {
     const out: AgendaEvent[] = [];
     for (let i = 0; i < reps; i++) out.push(...events);
     return out;
-  }, [events]);
+  }, [events, reps]);
 
-  /* duración real según el ancho medido: ~70 px/s, mín 24s */
+  /* Mide el ancho REAL de las cards y de la barra:
+     1) cuántas pasadas completas hacen falta para que una unidad cubra
+        todo el ancho visible (así nunca se ve un hueco al buclear);
+     2) la duración de la vuelta para una velocidad constante (~72 px/s). */
   useLayoutEffect(() => {
-    const el = trackRef.current;
-    if (!el) return;
-    const half = el.scrollWidth / 2;
-    if (half > 0) setDur(Math.min(240, Math.max(24, Math.round(half / 70))));
-  }, [set]);
+    const bar = barRef.current;
+    const unitEl = unitRef.current;
+    if (!bar || !unitEl) return;
+    const measure = () => {
+      const unitW = unitEl.scrollWidth; // ancho de la unidad actual
+      const barW = bar.clientWidth; // ancho visible de la barra
+      if (unitW <= 0 || barW <= 0) return;
+      const passW = unitW / reps; // ancho de UNA pasada completa
+      if (!Number.isFinite(passW) || passW <= 0) return;
+      const need = Math.max(1, Math.ceil((barW + 24) / passW));
+      if (need !== reps) {
+        setReps(need); // re-render con la unidad completa y vuelve a medir
+        return;
+      }
+      setDur(Math.min(600, Math.max(18, Math.round(unitW / 72))));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [unit, reps]);
 
   return (
     <footer className="absolute bottom-0 inset-x-0 z-20 h-[62px] border-t border-white/10 bg-black/70 backdrop-blur-sm flex items-stretch overflow-hidden">
@@ -215,12 +238,18 @@ function AgendaTickerBar({ events }: { events: AgendaEvent[] }) {
           Agenda hoy
         </span>
       </div>
-      {/* cinta: derecha → izquierda */}
-      <div className="flex-1 min-w-0 flex items-center overflow-hidden" role="marquee" aria-label="Agenda del día">
-        <div ref={trackRef} className="agenda-track flex w-max items-center pl-4" style={{ animationDuration: `${dur}s` }}>
+      {/* cinta: derecha → izquierda · última actividad → primera, en bucle */}
+      <div ref={barRef} className="flex-1 min-w-0 flex items-center overflow-hidden" role="marquee" aria-label="Agenda del día">
+        <div
+          className="agenda-track flex w-max items-center"
+          style={{
+            animationDuration: dur ? `${dur}s` : undefined,
+            animationPlayState: dur ? "running" : "paused",
+          }}
+        >
           {[0, 1].map((dup) => (
-            <div key={dup} className="flex items-center gap-2.5 pr-2.5" aria-hidden={dup === 1}>
-              {set.map((ev, i) => (
+            <div key={dup} ref={dup === 0 ? unitRef : undefined} className="flex items-center gap-2.5 pr-2.5" aria-hidden={dup === 1}>
+              {unit.map((ev, i) => (
                 <AgendaTickerCard key={`${dup}-${i}-${ev.id}`} ev={ev} />
               ))}
             </div>

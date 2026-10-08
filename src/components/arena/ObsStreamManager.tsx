@@ -91,10 +91,13 @@ export function ObsStreamManager({ onBack }: { onBack: () => void }) {
   const width = widthInput ?? String(settings.width);
   const height = heightInput ?? String(settings.height);
 
-  /* OBS en la MISMA PC de la app: localhost siempre funciona (loopback,
-     sin firewall). OBS en OTRA PC: la IP LAN la reporta el servidor. */
+  /* OBS en la MISMA PC de la app (escenario típico en Windows): localhost
+     es loopback interno — no pasa por firewall ni por la red, funciona siempre.
+     OBS en OTRA PC: la IP LAN la reporta el servidor. */
   const lanIps = useMemo(() => (status.lan ?? []).filter(Boolean), [status.lan]);
   const lanIp = lanIps[0];
+  const rtmpUrl = "rtmp://localhost:1935";
+  const rtmpLanUrl = lanIp ? `rtmp://${lanIp}:1935` : null;
 
   const httpUrl = useMemo(() => {
     if (typeof window === "undefined") return "http://<host-de-la-app>/api/stream/ingest";
@@ -199,14 +202,20 @@ export function ObsStreamManager({ onBack }: { onBack: () => void }) {
             />
           </div>
           <div className="mt-4 space-y-2.5">
-            <CopyRow label="Servidor (RTMP)" value={rtmpUrl} />
+            <CopyRow label="Servidor (RTMP) · OBS en esta PC" value={rtmpUrl} />
+            {rtmpLanUrl ? (
+              <CopyRow label={`Servidor (RTMP) · OBS en otra PC (${lanIp})`} value={rtmpLanUrl} />
+            ) : null}
             <CopyRow label="Clave de stream" value={STREAM_KEY} />
           </div>
           <div className="mt-4 flex gap-2 rounded-sm border border-white/10 bg-white/[0.03] p-3">
-            <Info size={13} className="text-[#8e919c] shrink-0 mt-0.5" />
+            <Network size={13} className="text-[#8e919c] shrink-0 mt-0.5" />
             <p className="text-[10px] font-semibold text-[#8e919c] leading-relaxed">
-              Requiere que el puerto <span className="text-white">1935</span> sea accesible desde la PC donde corre
-              OBS (servidor propio o red local). Si solo tienes un puerto HTTP disponible, usa el método 2.
+              Con OBS en la <span className="text-white">misma PC que la app</span> (Windows, macOS o Linux) usa el
+              servidor <span className="text-white">localhost</span>: la conexión es interna (loopback), no pasa por el
+              firewall ni por la red. Para OBS en <span className="text-white">otra PC de la red</span> usa la IP LAN y
+              permite el puerto <span className="text-white">1935</span> en el firewall de Windows. Si solo tienes un
+              puerto HTTP disponible, usa el método 2.
             </p>
           </div>
         </section>
@@ -249,8 +258,9 @@ export function ObsStreamManager({ onBack }: { onBack: () => void }) {
           <div className="mt-4 flex gap-2 rounded-sm border border-white/10 bg-white/[0.03] p-3">
             <Info size={13} className="text-[#8e919c] shrink-0 mt-0.5" />
             <p className="text-[10px] font-semibold text-[#8e919c] leading-relaxed">
-              Ideal cuando la app corre detrás de un único puerto HTTP (como esta vista previa). Si cortas la
-              transmisión en OBS, vuelve a pulsar Iniciar grabación para reconectar.
+              Ideal cuando la app corre detrás de un único puerto HTTP (como esta vista previa). En Windows requiere{" "}
+              <span className="text-white">ffmpeg en el PATH</span> (el método 1 RTMP no necesita nada extra). Si
+              cortas la transmisión en OBS, vuelve a pulsar Iniciar grabación para reconectar.
             </p>
           </div>
         </section>

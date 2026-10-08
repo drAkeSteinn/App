@@ -923,6 +923,90 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   animation: seatAvailable 4.2s ease-in-out infinite;
 }
 
+/* ---------------- QR del canal de WhatsApp (modo registro) ----------------
+   Rail derecho del modo registro: el QR del canal donde se anuncian los
+   matches. Marco con halo verde que late + línea de escaneo que lo recorre.
+   La imagen ya trae su propio marco cyberpunk rojo/negro con fondo
+   transparente, así que flota directo sobre el panel oscuro. */
+.wa-qr-panel {
+  border-color: rgba(37, 211, 102, 0.32);
+}
+@keyframes waGlow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px rgba(37, 211, 102, 0.22),
+      0 0 18px rgba(37, 211, 102, 0.18),
+      0 12px 34px rgba(0, 0, 0, 0.55);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgba(37, 211, 102, 0.5),
+      0 0 30px rgba(37, 211, 102, 0.36),
+      0 12px 34px rgba(0, 0, 0, 0.55);
+  }
+}
+.wa-qr-frame {
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+  animation: waGlow 3.2s ease-in-out infinite;
+}
+/* la línea de escaneo viaja dentro de un contenedor de altura completa
+   para poder animarla con transform (GPU) sin conocer la altura real */
+.wa-qr-scan {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 100%;
+  pointer-events: none;
+  animation: waScanLine 3.4s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+.wa-qr-scan::before {
+  content: "";
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  top: 0;
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, #25d366, transparent);
+  box-shadow:
+    0 0 12px rgba(37, 211, 102, 0.9),
+    0 0 30px rgba(37, 211, 102, 0.5);
+}
+@keyframes waScanLine {
+  0% {
+    transform: translateY(-3%);
+  }
+  100% {
+    transform: translateY(101%);
+  }
+}
+@keyframes waDot {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 10px rgba(37, 211, 102, 0.9);
+  }
+  50% {
+    opacity: 0.3;
+    box-shadow: 0 0 2px rgba(37, 211, 102, 0.25);
+  }
+}
+.wa-dot {
+  animation: waDot 1.7s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .wa-qr-frame {
+    animation: none;
+  }
+  .wa-qr-scan {
+    display: none;
+  }
+}
+
 /* ---------------- Spotlight del visor ----------------
    El shake/glitch de pantalla completa se aplica vía Web Animations API
    (SpectatorView) para poder re-dispararlo en cada evento sin renders.
@@ -1063,6 +1147,42 @@ body.obs-mode::-webkit-scrollbar {
   background: #000;
   border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow: 0 12px 44px rgba(0, 0, 0, 0.65);
+}
+
+/* marco ROJO BRILLANTE de la transmisión en el visor: destaca la señal
+   sobre los brackets. Borde rojo + halo que late suavemente. */
+.obs-stream-frame {
+  border: 2px solid #ff2440;
+  animation: obsFramePulse 2.8s ease-in-out infinite;
+}
+@keyframes obsFramePulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px rgba(255, 36, 64, 0.35),
+      0 0 14px rgba(255, 36, 64, 0.5),
+      0 0 38px rgba(232, 16, 46, 0.42),
+      0 0 84px rgba(232, 16, 46, 0.26),
+      0 14px 48px rgba(0, 0, 0, 0.7);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgba(255, 36, 64, 0.5),
+      0 0 24px rgba(255, 36, 64, 0.85),
+      0 0 58px rgba(232, 16, 46, 0.62),
+      0 0 120px rgba(232, 16, 46, 0.4),
+      0 14px 48px rgba(0, 0, 0, 0.7);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .obs-stream-frame {
+    animation: none;
+    box-shadow:
+      0 0 0 1px rgba(255, 36, 64, 0.45),
+      0 0 20px rgba(255, 36, 64, 0.7),
+      0 0 48px rgba(232, 16, 46, 0.5),
+      0 14px 48px rgba(0, 0, 0, 0.7);
+  }
 }
 
 .obs-root {
@@ -1363,3 +1483,5 @@ body.obs-mode.obs-editing {
   transform: translate(-50%, -50%);
   z-index: 10;
 }
+
+/* force recompile 1791427622 */

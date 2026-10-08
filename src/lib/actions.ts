@@ -27,7 +27,7 @@ import {
   serializeBracket,
   type BracketDoc,
 } from "./bracket";
-import { MODALITY_LABEL, isTeamModality, matchPlayable, playersCapacity, slotsPerMatch, type Bracket, type MatchMember, type Modality, type Player, type Tournament } from "./types";
+import { MODALITY_LABEL, isTeamModality, matchPlayable, playersCapacity, slotsPerMatch, type Bracket, type Match, type MatchMember, type Modality, type Player, type Tournament } from "./types";
 import { clearArenaForReset } from "./arenaState";
 
 /* ============================================================

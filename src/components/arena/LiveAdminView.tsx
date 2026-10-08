@@ -1365,7 +1365,7 @@ function SlotRow(props: {
    ============================================================ */
 
 type Guard = (fn: () => Promise<void>) => Promise<void>;
-type ConfirmKind = "remix" | "finish" | "wipe" | "reopen" | "results" | "fill" | "demos";
+type ConfirmKind = "remix" | "finish" | "stop" | "wipe" | "reopen" | "results" | "fill" | "demos";
 
 function MiniCountdown({ target }: { target: number }) {
   const [now, setNow] = useState(() => Date.now());
