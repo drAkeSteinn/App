@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   CalendarClock,
+  Cast,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -72,7 +73,7 @@ import {
   setStatus,
   stopTournament,
 } from "@/lib/actions";
-import { closeBankPick, emitSound, openBankPick, setSchedOpen, setShowPodium, useArenaState } from "@/lib/arenaState";
+import { closeBankPick, emitSound, openBankPick, setSchedOpen, setShowPodium, setTransmissionVisible, useArenaState } from "@/lib/arenaState";
 import { type SoundEvent } from "@/lib/sounds";
 import { closeTournament, getActiveInfo, openTournament, useActiveTournament } from "@/lib/activeTournament";
 import { useTournaments } from "@/lib/hooks";
@@ -120,6 +121,7 @@ export function LiveAdminView({
   const bankInfo = useMemo(() => computeBank(bracket, players), [bracket, players]);
   const arenaState = useArenaState(tournament?.id ?? null);
   const schedOpen = arenaState?.schedOpen ?? false;
+  const transmissionVisible = arenaState?.transmissionVisible ?? false;
   /* estado real del podio en el visor — para el botón Mostrar/Ocultar podio */
   const podiumOpen = arenaState?.showPodium ?? false;
   const togglePodium = () => {
@@ -495,6 +497,29 @@ export function LiveAdminView({
               >
                 <MonitorPlay size={13} />
                 <span className="hidden md:inline">Editar cards OBS</span>
+              </button>
+
+              {/* mostrar/ocultar la transmisión del OBS en el visor (fase 5) */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (!tournament) return;
+                  setTransmissionVisible(tournament.id, !transmissionVisible).catch(() => {});
+                }}
+                title={
+                  transmissionVisible
+                    ? "Ocultar la transmisión del OBS en el visor (los espectadores vuelven a los brackets/pantalla de espera)"
+                    : "Mostrar en el visor la transmisión recibida del OBS (centrada encima de los brackets)"
+                }
+                aria-pressed={transmissionVisible}
+                className={`btn-press clip-tag px-2.5 py-2 text-[10px] font-extrabold uppercase tracking-[0.1em] flex items-center gap-1.5 border transition-colors ${
+                  transmissionVisible
+                    ? "border-[#e8102e]/60 bg-[#e8102e]/15 text-white"
+                    : "border-white/12 text-[#8e919c] hover:text-white hover:border-[#e8102e]/60"
+                }`}
+              >
+                <Cast size={13} />
+                <span className="hidden md:inline">{transmissionVisible ? "Ocultar transmicion" : "Mostrar transmicion"}</span>
               </button>
 
               {/* toggle panel lateral */}

@@ -2,7 +2,8 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ExternalLink, Eye, Loader2, MonitorPlay, Radio, Settings2, Sparkles, Trophy, UserPlus, Clapperboard } from "lucide-react";
+import { ExternalLink, Eye, Loader2, MonitorPlay, Radio, Settings2, Sparkles, Trophy, UserPlus, Clapperboard, Cast } from "lucide-react";
+import { ObsStreamDot } from "./ObsStreamPlayer";
 import { useBracket, usePlayers, useTournaments } from "@/lib/hooks";
 import { useContests } from "@/lib/contestHooks";
 import type { Tournament } from "@/lib/types";
@@ -30,6 +31,8 @@ export function MainApp() {
   const [tab, setTab] = useState<Tab>("config");
   const [tidRaw, setTidRaw] = useState<string | null>(null);
   const [adminContestId, setAdminContestId] = useState<string | null>(null);
+  /* nonce que pide a Configuración abrir la sección Transmisión OBS */
+  const [obsNonce, setObsNonce] = useState(0);
 
   useEffect(() => {
     const handler = () => {
@@ -88,6 +91,15 @@ export function MainApp() {
      Sirve para todos los torneos y concursos: la URL nunca cambia. */
   const openObsAnims = () => {
     window.open("/?obs=anims", "_blank", "noopener");
+  };
+
+  /* Transmisión OBS: OBS transmite su señal a la app (RTMP o HTTP mpegts)
+     y el visor la muestra con el botón "Mostrar transmicion" de la fase 5.
+     Este botón salta a la sección de configuración completa (URLs, tamaño
+     en píxeles del visor, estado y vista previa). */
+  const openObsStream = () => {
+    setTab("config");
+    setObsNonce((n) => n + 1);
   };
 
   const goRegister = (id: string) => {
@@ -157,8 +169,19 @@ export function MainApp() {
               }))}
             />
 
-            {/* dock de salidas: Animaciones OBS · Cards OBS · Visor */}
+            {/* dock de salidas: Transmisión OBS · Animaciones OBS · Cards OBS · Visor */}
             <div className="hdr-dock shrink-0" role="group" aria-label="Salidas de transmisión">
+              <button
+                type="button"
+                onClick={openObsStream}
+                title="Transmisión OBS — configurar la señal que OBS envía a la app (URLs, tamaño en el visor y estado)"
+                aria-label="Configurar la transmisión de OBS"
+                className="hdr-ctl clip-tag obs-stream-btn px-3"
+              >
+                <Cast size={13} />
+                <ObsStreamDot pollMs={12000} />
+                <span className="hidden min-[1500px]:inline">Transmisión OBS</span>
+              </button>
               <button
                 type="button"
                 onClick={openObsAnims}
@@ -252,6 +275,7 @@ export function MainApp() {
                   onGoRegister={goRegister}
                   onGoLive={goLive}
                   onOpenViewer={openViewer}
+                  obsNonce={obsNonce}
                 />
               ) : tab === "registro" ? (
                 <RegistrationView tournament={tournament} players={players} loading={false} />

@@ -1,0 +1,49 @@
+###############################################
+# ARENA - Servidor de transmision (OBS -> App)
+# RTMP ingest :1935 (OBS publica aqui)
+# HLS output  :8888 (la App lo consume via proxy interno)
+# API control :9997 (solo localhost, estado de streams)
+###############################################
+logLevel: info
+api: yes
+apiAddress: 127.0.0.1:9997
+metrics: no
+pprof: no
+playback: no
+
+rtmp: yes
+rtmpAddress: :1935
+rtsp: no
+srt: no
+webrtc: no
+moq: no
+
+hls: yes
+hlsAddress: :8888
+hlsAllowOrigins: ['*']
+hlsAlwaysRemux: yes
+hlsVariant: lowLatency
+hlsSegmentCount: 7
+hlsSegmentDuration: 1s
+hlsPartDuration: 200ms
+hlsSegmentMaxSize: 50M
+hlsEncryption: no
+
+authInternalUsers:
+  # OBS puede publicar y cualquiera leer (produccion: restringir si se desea)
+  - user: any
+    pass: ''
+    permissions:
+      - action: publish
+      - action: read
+      - action: playback
+  # API solo desde localhost (la App la consulta)
+  - user: any
+    pass: ''
+    ips: ['127.0.0.1', '::1']
+    permissions:
+      - action: api
+      - action: metrics
+
+paths:
+  arena:

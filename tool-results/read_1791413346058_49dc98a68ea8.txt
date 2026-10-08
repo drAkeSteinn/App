@@ -1,0 +1,200 @@
+     1→
+     2→---
+     3→Task ID: 1
+     4→Agent: Z.ai Code (main)
+     5→Task: Clonar el repositorio https://github.com/drAkeSteinn/App e integrarlo en el directorio principal del proyecto para continuar editándolo.
+     6→
+     7→Work Log:
+     8→- Clonado el repo drAkeSteinn/App en /tmp/app-clone (rama main, 3 commits). La app es "ARENA · Gestor de Torneos": gestor de torneos gaming y concursos express con brackets en vivo, visor para espectadores/OBS, registro de jugadores, banco de reservas y overlay para OBS.
+     9→- Analizada la estructura: app client-side con Firebase Firestore (proyecto torneos-6cd4b, config incluida en src/lib/firebase.ts). Prisma permanece con el schema por defecto (no lo usa la app).
+    10→- Copiado src/ del repo al proyecto: src/app (page.tsx, layout.tsx, globals.css ~1172 líneas), src/lib (firebase, bracket, actions, hooks, contests, sounds, arenaState, activeTournament, contestHooks, bank, obsLayout, pcs, types), src/components/arena (22 componentes: MainApp, LiveAdminView, SpectatorView, ObsOverlay, MixOverlay, Podium, RegistrationView, ContestsView, TournamentsView, BankView, etc.) y src/components/bracket (BracketTree, MatchCard).
+    11→- Copiado assets públicos: fuentes personalizadas (RBNo3.1-ExtraboldItalic.otf, Montserrat 500-800 woff2), hyperlogo.png, Background.jpg, vs.png.
+    12→- Instaladas dependencias nuevas con bun: firebase@12.19.0, @fontsource/montserrat@5.3.0, canvas-confetti@1.9.4 (+ @types/canvas-confetti en dev).
+    13→- Reiniciado dev server en puerto 3000. Lint sin errores.
+    14→- Verificación end-to-end con Agent Browser: GET / 200, título "ARENA · Gestor de Torneos". Las 4 secciones navegables funcionan (CONFIGURACIÓN, REGISTRO, TORNEO EN VIVO, CONCURSOS) y cargan datos reales de Firebase (3 torneos: COPA HYPERX MARVEL TOKON 32/32 oficiales, COPA FFA HYPERX, TEST 64 BRACKET; 2 concursos: COSPLAY TEST, SONIDOS TEST).
+    15→- Verificado visor de espectadores /?v=show (modo registro con countdown y cuadro de lugares), vista móvil iPhone 14 (responsive, cards apiladas), footer sticky, consola sin errores y dev.log limpio.
+    16→
+    17→Stage Summary:
+    18→- App ARENA Torneos completamente integrada y corriendo en el puerto 3000, conectada a Firebase Firestore (torneos-6cd4b) con datos existentes accesibles.
+    19→- Arquitectura: todo client-side con Firebase; Next.js 16 + Turbopack; rutas de vista: / (admin), /?v=show (espectador), /?obs=1 (overlay OBS), /?t={tid} para seleccionar torneo.
+    20→- Artifacts: src/ actualizado, public/fonts + imágenes, package.json con firebase/@fontsource/montserrat/canvas-confetti añadidos.
+    21→
+    22→---
+    23→Task ID: 2
+    24→Agent: Z.ai Code (main)
+    25→Task: Ajustes de brackets/flujo solicitados por el usuario: jerarquía visual Gran Final vs 3er lugar, lugares en brackets al terminar la final, seguridades del flujo de torneo (5 fases), orden de columnas en Rondas, horarios de 3er lugar/final en el rail y cartelera, título de Gran Final más protagónico.
+    26→
+    27→Work Log:
+    28→- Analizados bracket.ts, types.ts, MatchCard, BracketTree, SpectatorView, MatchRail, RoundColumns, LiveAdminView, ScheduleOverlay, Podium, actions.ts y ui.tsx.
+    29→- NUEVO ESTADO "stopped" en TournamentStatus (types.ts) + STATUS_LABEL "DETENIDO" + StatusChip gris (ui.tsx). Diferencia detener (pausa) de finalizar (con campeón).
+    30→- actions.ts: closeRegistration() valida lugares oficiales llenos (banco opcional) antes de cerrar registro; stopTournament() → status stopped; finishTournament() valida que la Gran Final tenga ganador antes de marcar finished.
+    31→- LiveAdminView/PhaseBar: F2 "Cerrar registros" deshabilitado con hint "Faltan N jugadores · no puedes cerrar aún" si faltan cupos; F4 muestra "🔒 Mix bloqueado · torneo en vivo" cuando status=live (remix bloqueado en vivo, también quitado de Gestión); F5 rediseñada: live → Transmitiendo + Detener torneo (+ Finalizar torneo solo si hay campeón), stopped → Detenido + Reabrir torneo (movido desde Gestión a la fase 5), finished → Finalizado · Podio; Gestión: re-mix solo en stopped/finished.
+    32→- Confirm dialogs: nuevo kind "stop" (Detener = pausa, NO finaliza), "finish" reescrito (Finalizar con validación de campeón), "reopen" mensaje actualizado.
+    33→- SpectatorView: banner "Torneo detenido" solo con status stopped; status finished sin podio muestra "Torneo finalizado" con trofeos; stopped incluido en forceBank y en el fallback del Ticker.
+    34→- MatchCard: nuevo prop big (card 320px con fuentes/marcador/chips más grandes) para la Gran Final; chips de LUGARES en la final: ganador → "🏆 CAMPEÓN" (dorado), perdedor → "2°" (plateado); resto de rondas mantiene "PASA".
+    35→- BracketTree: nuevo componente FinalTitle (GRAN FINAL 20px display + trofeos + líneas rojas) usado en las 3 variantes de layout; ChampionPlate más grande (320px, 19px); ThirdPlaceSection reducido y discreto (card 196px, slots 24px, sin líneas conectoras, título "Disputa por el 3er lugar" 8px bronce) + chip "4°" para el perdedor del 3er lugar y "3°" bronce para el ganador.
+    36→- RoundColumns: columna "3er Lugar" movida ANTES de la columna "GRAN FINAL" (orden real de juego).
+    37→- MatchRail: la Gran Final y el 3er lugar SIEMPRE aparecen en el rail (aunque tengan slots "Por definir") con sus horas correctas; chips "FINAL" dorado y "3ER" bronce; oculto M# en matches estelares; hasRailMatches actualizado.
+    38→- ScheduleOverlay (cartelera): grupo "3ER LUGAR" insertado antes de "GRAN FINAL" (orden cronológico); final y 3er lugar siempre visibles con "Por definir"; ★ en vez de M#.
+    39→- Verificación con Agent Browser: fase 4 bloqueada en vivo (captura), detener → "Detenido" + Reabrir en fase 5 + Re-mix en Gestión (capturas), reabrir → restaura live; rail: "3ER @ 04:06 | FINAL @ 04:16" (18 programados); cartelera: "3ER LUGAR | GRAN FINAL" ordenado; Rondas: "SEMIFINALES | 3er Lugar | GRAN FINAL"; prueba controlada en TEST 64 BRACKET (backup/restauración exacta del doc) verificó chips 🏆CAMPEÓN/2°, placa de campeón y jerarquía visual; lint limpio; datos restaurados (torneos en live).
+    40→
+    41→Stage Summary:
+    42→- Flujo con seguridades: registro solo se cierra con cupos llenos, cuenta regresiva opcional, mix bloqueado en vivo, Detener = pausa (estado stopped, reabrible en fase 5), Finalizar solo con campeón definido.
+    43→- Jerarquía visual corregida: Gran Final estelar (título grande con trofeos + card 320px + CAMPEÓN/2° + placa dorada) y 3er lugar discreto (card compacta bronce, chips 3°/4°).
+    44→- Rail y cartelera muestran siempre 3er lugar y Gran Final con horarios correctos en orden cronológico.
+    45→
+    46→---
+    47→Task ID: 3
+    48→Agent: Z.ai Code (main)
+    49→Task: Correcciones solicitadas: (1) podio residual del visor al refrescar, (2) Fase 1 "Registro abierto" bloqueada con torneo en vivo + reinicio que limpie TODO, (3) botón "Mostrar podio" no funciona y debe alternar a "Ocultar podio", (4) card de campeón de los brackets debe ir ARRIBA y mucho más grande, parte central normal, cards en ORO/PLATA/BRONCE según lugar sin sombrear al 2°.
+    50→
+    51→Work Log:
+    52→- Diagnosticada la raíz del podio residual: el flag showPodium persiste en tournaments/{tid}/arena/state de Firestore y el visor lo mostraba sin validar si el bracket tiene campeón real.
+    53→- arenaState.ts: nueva clearArenaForReset(tid) — limpia showPodium, bankPick y schedOpen en una sola llamada.
+    54→- actions.ts: clearArenaForReset invocado en TODAS las rutas de reinicio (launchMix, deleteBracket, wipeRegistrations, resetBracketResults); deleteTournament ahora también borra el doc arena/state.
+    55→- SpectatorView: podio derivado del estado (podiumFlag && hasChampion con getPodium); sin campeón real JAMÁS se dibuja aunque el flag venga true; sonido tournamentFinish solo en transición oculto→visible; el podio se muestra en cualquier modo del visor (antes solo en brackets — causa del "botón no funciona"); "Ver brackets" del podio ahora escribe showPodium:false en Firestore (sin residual).
+    56→- LiveAdminView: podiumOpen derivado de useArenaState + togglePodium; botón "Mostrar podio ↔ Ocultar podio" en Fase 5 (cuando hay campeón) y en MatchPanel (final con ganador), reflejando el estado real del visor; Fase 1 muestra "🔒 Bloqueado · reinicia el torneo" con status live/stopped/finished (el botón Registro abierto solo existe en closed/mixing); mensajes de confirmación de Reiniciar marcadores/torneo actualizados (mencionan limpieza de podio).
+    57→- BracketTree: nuevo ChampionBanner — banner dorado gigante (crown + trofeo + nombre clamp(30px,4.8vw,56px) con text-gold-grad y glow) en la PARTE SUPERIOR de los brackets en los 3 layouts (R=1, FFA, clásico); ChampionPlate central eliminado.
+    58→- MatchCard: SlotView con prop tone (gold/silver/bronze) — la card completa se pinta del metal (CSS .slot-gold/.slot-silver/.slot-bronze) con chips oscuras metal-chip; en la final ganador=ORO (🏆 CAMPEÓN) y perdedor=PLATA (2°) SIN el sombreado slot-loser; ThirdPlaceSection: ganador del 3er lugar en BRONCE con chip "3°" oscura, 4° normal sin sombrear.
+    59→- globals.css: añadidos .slot-gold/.slot-silver/.slot-bronze, .metal-name/.metal-sub, .metal-chip(-gold/silver/bronze) y .text-gold-grad.
+    60→- QA E2E con Agent Browser + torneo temporal "QA PODIO" (script scripts/qa-tournament.mjs, borrado al final): flujo completo cerrar registro → mix → en vivo → semis → final → 3er lugar. Verificado: F1 bloqueada en vivo; banner arriba en admin y visor; ORO/PLATA/BRONCE correctos; Mostrar podio (panel y F5) muestra el podio en el visor con confetti y el botón alterna a Ocultar podio; tras Reiniciar torneo el podio desaparece del visor y NO reaparece al refrescar (flag limpiado en DB + guard de campeón); visor con datos reales (COPA HYPERX MARVEL TOKON, campeona KILLERQUEEN) muestra el banner gigante y los metales correctamente. Lint limpio, consola sin errores, torneo QA eliminado.
+    61→
+    62→Stage Summary:
+    63→- Podio a prueba de residuos: triple protección (clearArenaForReset en cada reinicio + guard hasChampion en el visor + cierre del podio escribe la señal off).
+    64→- Botón de podio bidireccional y confiable en 2 lugares (Fase 5 y panel del match), siempre sincronizado con el visor.
+    65→- Fase 1 inaccesible con el torneo en juego; solo el reinicio total la vuelve a habilitar.
+    66→- Campeón con protagonismo total: banner dorado gigante arriba de los brackets y cards de lugares en ORO/PLATA/BRONCE sin sombrear al 2°.
+    67→
+    68→---
+    69→Task ID: 4
+    70→Agent: Z.ai Code (main)
+    71→Task: (1) Optimizar las animaciones del broadcast (VS/enfrentamiento, ganador, sustitución, podio, mix, concursos) que se veían cargadas y consumían muchos recursos — partículas y efectos invisibles incluidos; (2) nueva URL hermana de "Cards OBS" llamada "Animaciones OBS" (botón junto al existente) que muestra SOLO las animaciones para OBS, con URL fija para todos los torneos/concursos.
+    72→
+    73→Work Log:
+    74→- Auditoría de rendimiento de TODAS las animaciones: glitchIn (clip-path animado = repaint por frame sobre texto gigante), shake de pantalla (1.9s con skewX de página completa vía WAAPI), rollBlur (filter: blur INFINITO en el mix), confetti (Podio 220 partículas + interval cada 2.6s PARA SIEMPRE; SubEnter 110; Cosplay 80 + interval 1.8s infinito; SoundWinner 90 + interval 1.6s infinito), scanline (animaba top = layout+paint infinito), noise (mix-blend-mode overlay full-screen recomponiendo toda la escena), drop-shadows de 26-44px sobre elementos animados, backdrop-blur full-screen en Podio/MixOverlay.
+    75→- Investigación en línea (web search): confirmadas las prácticas — clip-path/drop-shadow no se componen por GPU; animar transform/opacity en vez de top/left; will-change con moderación; confetti requiere cleanup. Las optimizaciones aplicadas siguen exactamente esas pautas.
+    76→- globals.css: glitchIn reducido a 4 pasos/0.38s (esencia del reveal glitch conservada); scanline ahora usa transform: translateY (GPU) en vez de top; rollBlur→rollJitter (transform+opacity, sin blur); noise sin mix-blend-mode (opacity simple); seatAvailable ralentizado a 4.2s; añadida clase .obs-anim-btn (acento dorado).
+    77→- lib/spotlight.ts (NUEVO): tipos SpotlightData/SpotlightPlayer/SubEnterData + findSpotlightEvent + hook useDramaCuts — lógica de cortes dramáticos EXTRAÍDA del visor y COMPARTIDA entre /?v=show y /?obs=anims (mismas animaciones garantizadas, sin sonidos en el hook: cada vista decide).
+    78→- SpectatorView: refactorizado a useDramaCuts (sin duplicación); sonidos winner/matchLive mantenidos en el visor; shake optimizado (0.85s, solo translate3d, sin skew).
+    79→- MatchSpotlight: prop `transparent` (velo suave radial para OBS en vez de fondo casi opaco); drop-shadows reducidos (vs.png 44px→20px, nick 26px→14px).
+    80→- SubEnterOverlay: prop `transparent`; confetti 110→60 partículas; drop-shadow 30px→16px.
+    81→- Podium: confetti 220→110 + lluvia que SE DETIENE sola a los 12s (antes infinita); sin backdrop-blur; destellos 5→3; props `transparent` (velo suave) y `hideControls` (sin botón "Ver brackets" para OBS).
+    82→- MixOverlay: sin backdrop-blur-md en el panel; interval del shuffle 110ms→130ms.
+    83→- ContestViewer: CosplaySpotlight 80→45 + interval 1.8s→3.2s con auto-stop 10s; SoundWinner 90→50 + auto-stop 10s; trofeo sin animación de filter (solo scale).
+    84→- AnimOverlay.tsx (NUEVO): componente de la URL /?obs=anims — fondo transparente (misma técnica que Cards OBS: obs-mode), resuelve el torneo ACTIVO (o ?t=<id>), reproduce SOLO las animaciones: MatchSpotlight (VS/ganador), SubEnterOverlay (reserva entra) y Podium (misma señal showPodium + guard anti-residual hasChampion), mudo a propósito (el audio lo pone el visor), sin nada dibujado cuando no hay animación.
+    85→- page.tsx: ruta `obs=anims` añadida. MainApp: botón "Animaciones OBS" (icono Clapperboard, carcasa oscura + hover dorado) junto a "Cards OBS", abre /?obs=anims en nueva pestaña.
+    86→- QA E2E con Agent Browser + torneo temporal "QA ANIMS" (8 jugadores demo, creado y ELIMINADO al final): flujo completo llenar→cerrar registro→mix→en vivo. Verificado: /?obs=anims idle 100% transparente (html/body transparent + obs-mode); botón abre la URL en nueva pestaña; al poner CUARTOS M2 en juego el spotlight VS se monta en el overlay (DOM + opacity=1); al marcar ganador de M1 el corte GANADOR se renderiza en /?obs=anims con velo transparente (captura: tag M1, nicks, PC chips, chip GANADOR dorado, banner "GANADOR · PIXELDRAKE74"); /?v=show refactorizado muestra el mismo corte de ganador (captura BLACKKING73) + brackets/banner campeón intactos con datos reales (COPA HYPERX MARVEL TOKON, FERALFOX73 campeón); /?obs=1 cards funcionan; lint limpio; sin errores de runtime en consola ni dev.log; torneo QA eliminado (datos reales intactos).
+    87→
+    88→Stage Summary:
+    89→- Animaciones optimizadas conservando su esencia: los costos invisibles (blur infinito, clip-path largo, blend-mode full-screen, partículas perpetuas, top animado, drop-shadows enormes, backdrop-blur) eliminados o acotados; ahora todo lo posible corre en transform/opacity (compositor GPU) y las partículas tienen auto-stop.
+    90→- Nueva URL fija /?obs=anims ("Animaciones OBS") que muestra únicamente las animaciones optimizadas sobre fondo transparente para OBS, sincronizada con el visor vía el hook compartido useDramaCuts (lib/spotlight.ts); botón hermano de "Cards OBS" en el header.
+    91→- Sonidos exclusivos del visor para no duplicar audio; el overlay OBS es mudo.
+    92→
+    93→---
+    94→Task ID: 5
+    95→Agent: Z.ai Code (main)
+    96→Task: Unificar el estilo y la distribución de todos los controles del header de administración (tabs "Configuración/Registro/Torneo en vivo/Concursos" hasta el botón "Visor").
+    97→
+    98→Work Log:
+    99→- Diagnóstico con Agent Browser a 1500px: la pestaña CONCURSOS quedaba cortada (la nav tenía overflow-x propio y se comprimía), "Animaciones OBS"/"Cards OBS" se envolvían en 2 líneas, 3 alturas distintas (~44/40/32px) y 3 formas de clip distintas (clip-tag / clip-btn / clip-card-sm), botones sueltos sin agrupar.
+   100→- globals.css: nuevas clases .hdr-ctl (altura implícita 38px standalone / 30px en dock, 10px extrabold uppercase tracking .14em, nowrap, transiciones) y .hdr-dock (contenedor segmentado p-1 bg-black/40 border-white/10, hijos estirados a igual altura). Misma familia de corte clip-tag para TODOS los controles del header.
+   101→- MainApp.tsx: header reestructurado en dos docks segmentados — dock de navegación (4 tabs, activo rojo, inactivos con bg sutil y hover) y dock de salidas (Animaciones OBS con icono dorado, Cards OBS con icono rojo, Visor relleno rojo como CTA primaria), con el selector de torneo justo a la izquierda de las salidas. Todo shrink-0 con overflow-x no-scrollbar solo como fallback.
+   102→- Responsive progresivo: labels de OBS solo ≥1500px (icon-only entre 1280-1499), texto de marca oculto <1280px; sin overflow horizontal medido en 1280/1500/1536; <1024 hace scroll horizontal táctil sin cortar controles a la mitad.
+   103→- ui.tsx Select rediseñado: trigger con .hdr-ctl h-38 clip-tag (misma altura/tipografía que el resto), dropdown portado a document.body con position:fixed (top/left/width desde getBoundingClientRect) — NECESARIO porque el overflow-x del header recortaba el panel y backdrop-blur creaba containing block; cierre por scroll (capture)/resize/Escape y click-fuera (incluye el panel portado); shape clip-tag también en el panel.
+   104→- BUGS encontrados y corregidos durante QA: (1) chunk CSS obsoleto en .next — resuelto limpiando .next y reiniciando dev server; (2) AnimatePresence de framer-motion se come los hijos createPortal (el panel nunca montaba con open=true) — resuelto renderizando el portal directamente (entra con animación, sale instantáneo).
+   105→- QA E2E con Agent Browser: dropdown muestra 3 torneos con logo/hint y selección resaltada; cambiar selección funciona (COPA FFA HYPERX ↔ MARVEL TOKON, restaurado); tabs Cambian y cargan datos (Configuración, Registro 32/32, Torneo en vivo con brackets, Concursos); los 3 botones abren sus URLs en nueva pestaña (/?obs=anims, /?obs=1, /?v=show); hover dorado en Animaciones OBS; visor /?v=show intacto; móvil 390 usable con scroll; lint limpio; consola y dev.log sin errores.
+   106→
+   107→Stage Summary:
+   108→- Header con lenguaje visual 100% unificado: dos docks segmentados simétricos (navegación | torneo+salidas), todos los controles a 38px con el mismo corte angular y tipografía; acentos por función (rojo=activo/primario, dorado=animaciones, rojo tenue=cards).
+   109→- Select de torneo ahora con panel portal fijo (a prueba de contextos de overflow/blur) con cierre por Escape/scroll/click-fuera.
+   110→- Sin desbordes medidos en 1280-1536px; degradación elegante hacia tablets/móvil.
+   111→
+   112→---
+   113→Task ID: 1-a
+   114→Agent: Z.ai Code (sub-agente streaming)
+   115→Task: Provisionar servidor RTMP→HLS (MediaMTX) como mini servicio en /home/z/my-project/mini-services/stream-server/ para ingesta desde OBS (RTMP :1935) y reproducción HLS (:8888), con API de control solo-localhost (:9997).
+   116→
+   117→Work Log:
+   118→- Leído worklog.md previo (tasks 1-5: app ARENA integrada en Next.js 16 puerto 3000).
+   119→- Creado mini-services/stream-server/ y descargado MediaMTX v1.21.1 (último tag vía GitHub API) binario estático linux_amd64; extraído como ./mediamtx con chmod +x.
+   120→- Creado mediamtx.yml con el contenido solicitado; corregidos 3 puntos que mediamtx v1.21.1 rechazó/avisó al arrancar: (1) ips: ['localhost'] → ips: ['127.0.0.1', '::1'] (error "unable to parse IP/CIDR 'localhost'", mismo efecto: API solo localhost); (2) hlsAllowOrigin (deprecado) → hlsAllowOrigins: ['*']; (3) añadido moq: no para desactivar los listeners extra Media-over-QUIC (8892/8893) que v1.21.1 activa por defecto y borrar auto.crt/auto.key generados.
+   121→- Creado package.json {"name":"stream-server","private":true,"scripts":{"dev":"./mediamtx mediamtx.yml"}} siguiendo la convención de mini-services del sandbox (escaneada por .zscripts/dev.sh al boot: bun install + bun run dev, log en .zscripts/mini-service-stream-server.log).
+   122→- Creado además start.sh auxiliar dentro del mismo directorio (idempotente, para arranque manual).
+   123→- Arranque en background con nohup + disown y verificación: arranque limpio (sin warnings), listeners RTMP :1935, HLS :8888, API 127.0.0.1:9997; GET /v3/paths/list responde HTTP 200 JSON con el path estático "arena" (ready:false sin publisher — esperado).
+   124→- Prueba E2E con ffmpeg 7.1.5 (presente en el sistema, compilado con --enable-libx264): publicación RTMP de 25s de testsrc2 1080p30 + seno 440Hz (libx264 veryfast zerolatency + AAC 128k) a rtmp://127.0.0.1:1935/arena. API confirmó name:"arena" ready:true online:true tracks [H264, MPEG-4 Audio] (1920x1080 High profile); ~10MB ingestados. HLS servido en /arena/index.m3u8 (responde 302 → ?cookieCheck=1, se sigue con curl -L) y la playlist master LL-HLS se obtuvo correctamente (ver Stage Summary). ffmpeg detenido con pkill -x ffmpeg al terminar ("Exiting normally, received signal 15"); mediamtx quedó vivo tras la prueba. NO se tocó código Next.js ni Caddyfile.
+   125→- LIMITACIÓN DEL SANDBOX (importante): este entorno mata (SIGKILL silencioso, sin rastro en logs) cualquier proceso background lanzado desde la sesión de shell del agente a los pocos segundos de terminar el tool call — verificado con mediamtx, un http.server de python y sleeps, con nohup/setsid/disown. Los únicos procesos persistentes son los arrancados por el boot del sandbox (/start.sh → .zscripts/dev.sh). Por eso el servicio está dejado registrado exactamente en la convención que dev.sh auto-arranca al boot/reinicio del sandbox (como el dev server de Next, vivo desde el 6-oct), y mientras una sesión esté activa se levanta con: cd mini-services/stream-server && ./start.sh (o nohup bun run dev > stream.log 2>&1 & disown).
+   126→
+   127→Stage Summary:
+   128→- MediaMTX v1.21.1 operativo en mini-services/stream-server/ (binario + mediamtx.yml + package.json + start.sh): RTMP ingest :1935 abierto a cualquier IP (OBS publica en rtmp://<host>:1935/arena sin credenciales), HLS LL-HLS :8888 (lowLatency, 7 segmentos de 1s, partes 200ms, CORS '*'), API :9997 restringida a 127.0.0.1/::1.
+   129→- Validado E2E: publish ffmpeg→RTMP OK (ready/online true, H264+AAC), playlist HLS master servida con variantes video 1080p (avc1.640028) + audio (mp4a.40.2) y sesiones por viewer; API /v3/paths/list 200.
+   130→- Auto-arranque garantizado al (re)iniciar el sandbox vía .zscripts/dev.sh (convención mini-services); arranque manual inmediato: ./start.sh dentro del directorio del servicio.
+   131→
+   132→---
+   133→Task ID: 6
+   134→Agent: Z.ai Code (main)
+   135→Task: Transmisión OBS en la app: (1) URL de ingestión a la que OBS pueda transmitir como proveedor de streaming, (2) la transmisión visible en el visor, (3) botón "Transmisión OBS" en la app, (4) señal a resolución nativa centrada encima de los brackets.
+   136→
+   137→Work Log:
+   138→- Decisión de arquitectura: servidor MediaMTX v1.21.1 (binario estático Go) como mini-service en mini-services/stream-server — RTMP ingest :1935 (OBS publica aquí), HLS :8888 (salida), API control 127.0.0.1:9997 (solo localhost). Config mediamtx.yml con hlsAlwaysRemux+lowLatency, authInternalUsers: publish/read abiertos (nota: restringir en producción si se desea) y action:api solo para 127.0.0.1. Auto-arranque en boot vía .zscripts/dev.sh + start.sh manual (convención mini-services).
+   139→- Descubrimiento crítico de MediaMTX v1.21: el flujo HLS exige cookie (master → 302 ?cookieCheck=1 + Set-Cookie) y la sesión HLS queda LIGADA a esa cookie: playlists/segmentos sin cookie responden 401 directo SIN 302 de recuperación; además la sesión caduca por inactividad. El fetch de Node no gestiona cookies.
+   140→- /api/stream/proxy/[...path]/route.ts: proxy HLS que reescribe los .m3u8 (URIs → /api/stream/proxy/…), sigue el 302 a mano guardando la cookie en globalThis (sobrevive al hot-reload) y SE AUTO-SANA: ante 401 renueva la sesión rehaciendo la danza del master y reintenta 1 vez. /api/stream/status/route.ts: consulta /v3/paths/list de MediaMTX y expone {live, viewers} (lectores "…session"). El navegador nunca habla directo con MediaMTX (sin CORS ni puertos extra).
+   141→- ObsStreamPlayer.tsx: hook useObsStreamStatus (polling), ObsStreamDot (punto de estado para el header), ObsStreamPlayer (hls.js dinámico lowLatency, reintentos de red, video muted/autoplay/playsinline a resolución NATIVA — w-auto/max-w/max-h sin recortes, badge "EN VIVO · N viendo", overlay "Conectando…", retorna null sin señal) y ObsStreamStage (slot shrink-0 del visor). Corregido durante QA: Events/ErrorTypes son estáticos del constructor de hls.js.
+   142→- SpectatorView: la transmisión se muestra en modo brackets (slot centrado ENCIMA del bracket, que se reacomoda con FitStage) y también en modo registro (encima de RegistrationBroadcast). Al cortar la señal el player desaparece solo.
+   143→- MainApp: botón "Transmisión OBS" (icono Cast + ObsStreamDot) PRIMERO en el dock de salidas junto a Animaciones OBS/Cards OBS/Visor, mismo lenguaje .hdr-ctl/clip-tag (.obs-stream-btn + .obs-stream-dot en globals.css). ObsStreamDialog (portal a body, Escape/backdrop para cerrar): chip de estado EN VIVO/Sin señal, pasos para OBS, servidor rtmp://<host>:1935 y clave "arena" con copiar al portapapeles, nota de resolución nativa y puerto 1935, y vista previa en vivo.
+   144→- QA E2E (ffmpeg local como OBS simulado, 720p/1080p H264+AAC → rtmp://127.0.0.1:1935/arena): status {live:true,viewers}, master/level/segmento 200 vía proxy; EN EL NAVEGADOR video 1280x720 rs=4 reproduciéndose centrado encima de los brackets (captura), badge EN VIVO · 1 VIENDO; diálogo admin con EN VIVO + vista previa funcionando (captura); al cortar señal el player se oculta (captura); lint limpio. Limitación de entorno: el sandbox mata los procesos ffmpeg lanzados entre tool calls y solo expone 1 puerto HTTP (el RTMP 1935 no es alcanzable desde fuera del sandbox) — la validación externa de OBS real requiere el puerto 1935 abierto en el despliegue; el pipeline interno quedó demostrado completo.
+   145→
+   146→Stage Summary:
+   147→- La app ES un proveedor de ingestión para OBS: rtmp://<host>:1935 + clave "arena"; el visor /?v=show muestra la señal automáticamente a resolución nativa, centrada encima de los brackets (y sobre el modo registro), con badge EN VIVO y espectadores, desapareciendo al cortar la señal.
+   148→- Botón "Transmisión OBS" en el header con punto de estado en vivo y panel con configuración lista para copiar, estado y vista previa.
+   149→- Infraestructura reproducible: mini-services/stream-server (MediaMTX + start.sh + auto-boot), APIs de status/proxy con cookie-session self-healing documentadas en el código.
+   150→---
+   151→Task ID: 7
+   152→Agent: Z.ai Code (main)
+   153→Task: (1) Repensar la pantalla de espera del visor "Esperando transmisión": carpeta `videos/` en la app + nueva sección "Videos" en Configuración (vista COMPLETA, no modal) que lee la carpeta, sube videos sin límite de peso, lista los subidos, botón Resincronizar y checkbox para elegir cuáles se reproducen en loop como playlist; (2) Agenda de eventos con horario (crear/editar/eliminar) que se muestra SOLO del día en curso y desfila en la pantalla de espera en una barra inferior (derecha → izquierda, fondo negro semi transparente, cards estilo brackets).
+   154→
+   155→Work Log:
+   156→- Carpeta `videos/` en la raíz de la app (con .gitkeep; contenido excluido del git).
+   157→- APIs de servidor (runtime nodejs, streaming real, sin límite de peso):
+   158→  · GET /api/videos — lista la carpeta (nombre, size, mtime) ordenada numéricamente.
+   159→  · POST /api/videos/upload?name= — body crudo → Readable.fromWeb → pipeline a disco (streaming, sin buffer en memoria); renombrado automático ante colisión (nombre-2.ext); sanitización de nombres (sin rutas/inválidos, acentos permitidos).
+   160→  · GET /api/videos/file/[name] — sirve con soporte RANGE (206, Content-Range, Accept-Ranges, suffix bytes=-N, 416) para streaming/seeking del <video>; DELETE elimina el archivo. Validación antipath-traversal.
+   161→- lib/videoFiles.ts (solo servidor): VIDEOS_DIR, VIDEO_RE, contentTypeFor, sanitizeName, availableName.
+   162→- lib/videos.ts (cliente): fetchVideos, videoFileUrl (?v=mtime cache-bust), fmtBytes, useVideoSelection (Firestore doc settings/videos = {selected[]} con onSnapshot — selección en TIEMPO REAL para el visor) y useWaitingPlaylist (poll de carpeta cada 30s ∩ selección, orden natural 01,02,…).
+   163→- lib/agenda.ts (cliente): colección `agenda` {title,date YYYY-MM-DD,time HH:mm,note,createdAt}; useAgenda (onSnapshot, ordenada); addAgendaEvent/updateAgendaEvent/deleteAgendaEvent; localDateKey (día local de la máquina), fmtTimeParts/fmtDayLabel/fmtDayShort/dayRelation.
+   164→- VideosManager.tsx (SECCIÓN COMPLETA en Configuración, no modal): back "Volver a torneos", chips (en carpeta / en reproducción / peso en disco), dropzone drag&drop + input múltiple, subida por XHR con PROGRESO real por archivo y renombrado, lista con CHECKBOX dorado por video (marca los que el visor reproduce en loop, "EN LOOP"), preview en modal, eliminar con Confirm (y limpieza de la selección), botón RESINCRONIZAR (relee la carpeta — refleja archivos copiados manualmente al servidor), aviso de formatos no reproducibles (mkv/avi…) y nota del orden por nombre.
+   165→- AgendaManager.tsx (SECCIÓN COMPLETA): formulario título/fecha/hora/nota, lista completa ordenada con tile de día, badge de hora rojo, chip "Hoy", días pasados atenuados, editar en modal y eliminar con Confirm; chip "N eventos hoy".
+   166→- TournamentsView.tsx: botones "Videos" y "Agenda" junto a "Sonidos"/"Nuevo torneo"; subView reemplaza TODA la sección Configuración (vista completa, con back).
+   167→- WaitingScreen.tsx (visor, reemplaza el bloque estático): playlist en LOOP (video tras video, key-reset por firma de playlist), mute por defecto con botón IMPERATIVO de sonido (aplica v.muted síncrono + play(); si el navegador bloquea el audio regresa a mute sin cortar la reproducción), chip "Esperando transmisión" + contador "N / M", object-contain a resolución nativa sobre fondo negro; AGENDA TICKER: barra inferior fija bg-black/70 con etiqueta lateral "Agenda hoy" y cards estilo rail (hora grande + título + nota) desfilando derecha→izquierda con duración calculada por ancho (~70px/s) — SOLO los eventos de HOY (recalculado por minuto para el cambio de día); sin videos marcados → pantalla estática clásica (el ticker de agenda sigue visible si hay eventos hoy).
+   168→- SpectatorView.tsx: el bloque de espera delega en <WaitingScreen loading error />.
+   169→- globals.css: .agenda-track (keyframes transform translateX 0→-50%, GPU-only, reduced-motion), .dropzone (+ .is-over), .scroll-slim.
+   170→- BUGS encontrados y corregidos en QA: (1) el <video> desmontado por el key-swap dispara un `error` de aborto que duplicaba el avance de la playlist (saltaba videos) — corregido ignorando errores de elementos que ya no son el actual (comparación contra videoRef); (2) des-mute: play() resolvía con el elemento aún muteado y Chrome pausaba después — corregido aplicando v.muted síncronamente antes de play() con fallback a mute; (3) clics rápidos de checkbox pisaban la selección (stale closure sobre el estado de Firestore) — corregido con espejo en selectedRef; (4) import faltante de useEffect provocó un crash transitorio — corregido.
+   171→- QA E2E (Agent Browser + ffmpeg): subida por API de un archivo de 150 MB (sin límite, streaming) + 3 videos de prueba generados con ffmpeg; verificado 206 Range, renombrado por colisión, DELETE, Resincronizar con archivo copiado manualmente, subida desde la UI con progreso, checkbox en tiempo real, preview y borrado con confirmación; agenda: 3 eventos hoy + 1 ayer + 1 mañana (ayer eliminado desde la UI), edición con modal; visor: playlist 01→02→03→01 secuencial y en loop a 1280x720 nativo, ticker con SOLO los 3 eventos de hoy desfilando (medido movimiento x negativo), ciclo torneo abierto (visor normal) ↔ cerrado (pantalla de espera con videos), fallback estático al desmarcar todos; móvil 390px sin overflow y footer/ticker correctos; lint limpio; consola sin errores. El dev server se reinició tras una caída del proceso (sin rastro en logs; sin pérdida de datos).
+   172→
+   173→Stage Summary:
+   174→- La pantalla de espera del visor ya no es una imagen muerta: reproduce en loop la playlist de videos marcados en Configuración → Videos (carpeta `videos/` del servidor, subida en streaming SIN límite de peso, Resincronizar, lista y checkboxes sincronizados en tiempo real vía Firestore).
+   175→- Nueva Agenda de eventos (vista completa en Configuración) con edición/eliminación; en el visor solo desfila lo del DÍA EN CURSO en una barra inferior negra semi transparente con cards idénticas en estilo a las de los brackets, recorriéndose de derecha a izquierda.
+   176→- API de videos lista para producción: streaming con Range (seek), sanitización, colisiones y DELETE; URLs estables `/api/videos/file/<nombre>`.
+   177→
+   178→---
+   179→Task ID: 8
+   180→Agent: Z.ai Code (main)
+   181→Task: Transmisión OBS — (1) sección de configuración COMPLETA donde están "Videos/Agenda/Sonidos" con la URL para OBS y el tamaño en píxeles del visor, (2) botón "Mostrar transmicion"/"Ocultar transmicion" en fase 5 junto a "Cartelera" y "Editar cards OBS", (3) revisar documentación y confirmar que la transmisión funciona SIN servicios externos.
+   182→
+   183→Work Log:
+   184→- Revisión de documentación (web search + docs locales): MediaMTX (mediamtx.org) publica OBS como cliente RTMP en self-hosted (sin terceros); OBS Studio soporta "Salida personalizada (FFmpeg) → Salida a URL" (foros oficiales + issue GitHub #8043) que permite emitir MPEG-TS por HTTP POST. Conclusión: pipeline 100% autónomo posible y ya demostrado.
+   185→- Nuevo mini-servicio mini-services/ingest-server (Bun, puerto fijo 3030, auto-arranque por convención dev.sh + package.json con "dev"): POST /ingest recibe MPEG-TS en streaming (chunked), lo bombea a ffmpeg `-c copy` (SIN recodificar, resolución nativa) y re-publica RTMP al MediaMTX local (rtmp://127.0.0.1:1935/arena) → HLS :8888 → proxy existente → visor. Una sola sesión activa (la nueva reemplaza a la anterior), manejo de aborts/errores y endpoint /status y /healthz. E2E validado: curl -T - (chunked) → gateway (:81 con XTransformPort=3030) → ingest → ffmpeg → MediaMTX: /api/stream/status {live:true}, playlist HLS master (avc1+mp4a) servida por /api/stream/proxy; tras cortar, live:false.
+   186→- arenaState.ts: nueva señal transmissionVisible en tournaments/{tid}/arena/state + setTransmissionVisible() + incluida en clearArenaForReset (reiniciar torneo SIEMPRE oculta la transmisión).
+   187→- ObsStreamManager.tsx (NUEVO): sección COMPLETA en Configuración (no modal, misma familia que Videos/Agenda): banner "SIN SERVICIOS EXTERNOS", estado EN VIVO/Sin señal + espectadores, Método 1 RTMP (pasos + copiar servidor rtmp://<host>:1935 y clave "arena"), Método 2 HTTP sin puertos extra (URL http://<host>/ingest?XTransformPort=3030 + pasos OBS Salida Avanzada → Grabación → Salida personalizada FFmpeg → mpegts → Iniciar grabación), bloque "Tamaño en el visor" (ancho/alto en px, validación 160×90 mín, guardado en Firestore con toast) y "Señal recibida" (vista previa en vivo + nota de dónde queda el botón Mostrar transmicion).
+   188→- lib/obsStream.ts (NUEVO): doc settings/obs = {width,height} (defaults 1920×1080) con onSnapshot en tiempo real + useObsDisplaySettings/useObsSettingsForm/saveObsDisplaySettings.
+   189→- ObsStreamPlayer: video acepta width/height en px (marco fijo con object-contain, sin deformar; sin marco fijo → nativo + maxBox); ObsStreamStage ahora {visible} — solo monta cuando el admin activó "Mostrar transmicion" Y hay señal; carga settings/obs él mismo (visor reacciona al instante).
+   190→- SpectatorView: pasa visible={transmissionVisible} al stage en modo brackets y registro.
+   191→- LiveAdminView: botón "Mostrar transmicion"/"Ocultar transmicion" (icono Cast, aria-pressed, acento rojo activo) justo después de "Editar cards OBS", escribe la señal en Firestore.
+   192→- TournamentsView: subView "obs" + botón "Transmisión OBS" junto a Videos/Agenda/Sonidos + prop obsNonce.
+   193→- MainApp: el botón del header "Transmisión OBS" (con punto de estado) ahora SALTA a la sección completa (tab config + obsNonce); ObsStreamDialog eliminado (su contenido vive en la sección).
+   194→- QA E2E con Agent Browser + ffmpeg como OBS simulado: botón del header navega a la sección; guardar tamaño 1280×720 → toast + "SE APLICA AL INSTANTE"; fase 5 muestra el botón junto a Cartelera/Editar cards OBS; con señal + Mostrar → visor muestra PLAYER 1280×720 paused=false centrado ENCIMA de los brackets con badge "EN VIVO · 3 viendo" (capturas); Ocultar → player desaparece del visor; Mostrar → reaparece; al cortar la señal el player se oculta solo; restaurado default 1920×1080; móvil 390 sin overflow; lint limpio; dev server se cayó una vez (sin rastro en logs, comportamiento conocido del sandbox) y fue reiniciado + re-verificado golden path completo; streams de prueba y scripts QA eliminados, flag dejada en OCULTO.
+   195→
+   196→Stage Summary:
+   197→- La app es un proveedor de ingestión AUTÓNOMO para OBS sin servicios externos: MediaMTX + ingest-server corren dentro del proyecto (mini-services, auto-arranque). Dos vías: RTMP directo (rtmp://<host>:1935, clave "arena") y HTTP MPEG-TS (http://<host>/ingest?XTransformPort=3030) que funciona incluso con un solo puerto HTTP expuesto como esta vista previa.
+   198→- Sección "Transmisión OBS" completa en Configuración (URLs para copiar, estado, vista previa y tamaño en píxeles del visor con aplicación en tiempo real).
+   199→- Botón "Mostrar transmicion"/"Ocultar transmicion" en fase 5 (junto a Cartelera y Editar cards OBS) persistido en Firestore, limpiado al reiniciar el torneo, con el visor reflejándolo en tiempo real encima de los brackets/registro.
+   200→

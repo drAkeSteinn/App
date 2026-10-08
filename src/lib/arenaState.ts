@@ -38,6 +38,8 @@ export interface ArenaState {
   schedOpen?: boolean;
   sound?: SoundSignal | null;
   showPodium?: boolean;
+  /** el admin decidió mostrar/ocultar la transmisión del OBS en el visor */
+  transmissionVisible?: boolean;
 }
 
 const arenaRef = (tid: string) => doc(fdb, "tournaments", tid, "arena", "state");
@@ -92,13 +94,20 @@ export async function setShowPodium(tid: string, show: boolean) {
   await setDoc(arenaRef(tid), { showPodium: show } as Partial<ArenaState>, { merge: true });
 }
 
+/** El admin muestra u oculta la transmisión del OBS en el visor
+    (botón "Mostrar transmicion" / "Ocultar transmicion" de la fase 5). */
+export async function setTransmissionVisible(tid: string, show: boolean) {
+  await setDoc(arenaRef(tid), { transmissionVisible: show } as Partial<ArenaState>, { merge: true });
+}
+
 /** Limpia TODAS las señales transitorias del visor al reiniciar el torneo:
-    podio (residual), selector de banco y cartelera. Sin esto, al actualizar
-    o reabrir el visor reaparecería un podio viejo que ya no corresponde. */
+    podio (residual), selector de banco, cartelera y transmisión OBS. Sin esto,
+    al actualizar o reabrir el visor reaparecería un podio viejo que ya no
+    corresponde (o una transmisión que nadie volvió a pedir). */
 export async function clearArenaForReset(tid: string) {
   await setDoc(
     arenaRef(tid),
-    { showPodium: false, bankPick: null, schedOpen: false } as Partial<ArenaState>,
+    { showPodium: false, bankPick: null, schedOpen: false, transmissionVisible: false } as Partial<ArenaState>,
     { merge: true }
   );
 }

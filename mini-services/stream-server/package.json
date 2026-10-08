@@ -1,0 +1,1 @@
+{"name":"stream-server","private":true,"scripts":{"dev":"./mediamtx mediamtx.yml"}}

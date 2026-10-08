@@ -4,8 +4,11 @@ import React, { useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Calendar,
+  CalendarDays,
+  Cast,
   Clock,
   Eye,
+  Film,
   Image as ImageIcon,
   Music,
   Pencil,
@@ -23,6 +26,9 @@ import { createTournament, deleteTournament, updateTournament, type TournamentIn
 import { fmtDateLong, toLocalInputValue, fromLocalInputValue } from "@/lib/bracket";
 import { Btn, Confirm, EmptyState, Field, IconBtn, Modal, ModalityChip, Segmented, StatusChip, TextInput } from "./ui";
 import { SoundsConfig } from "./SoundsConfig";
+import { VideosManager } from "./VideosManager";
+import { AgendaManager } from "./AgendaManager";
+import { ObsStreamManager } from "./ObsStreamManager";
 
 /* ============================================================
    Vista CONFIGURACIÓN — crear y administrar torneos
@@ -310,6 +316,7 @@ export function TournamentsView({
   onGoRegister,
   onGoLive,
   onOpenViewer,
+  obsNonce = 0,
 }: {
   tournaments: Tournament[];
   loading: boolean;
@@ -319,12 +326,34 @@ export function TournamentsView({
   onGoRegister: (tid: string) => void;
   onGoLive: (tid: string) => void;
   onOpenViewer: () => void;
+  /** increments cuando el botón del header pide abrir la sección Transmisión OBS */
+  obsNonce?: number;
 }) {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Tournament | null>(null);
   const [deleting, setDeleting] = useState<Tournament | null>(null);
   const [busy, setBusy] = useState(false);
   const [soundsOpen, setSoundsOpen] = useState(false);
+  /* Secciones que se abren en VISTA COMPLETA (no en ventana): Videos, Agenda y Transmisión OBS */
+  const [subView, setSubView] = useState<null | "videos" | "agenda" | "obs">(null);
+
+  /* el botón "Transmisión OBS" del header salta directo a la sección */
+  React.useEffect(() => {
+    if (obsNonce > 0) setSubView("obs");
+  }, [obsNonce]);
+
+  /* --- Sección Videos (pantalla completa de la pestaña) --- */
+  if (subView === "videos") {
+    return <VideosManager onBack={() => setSubView(null)} />;
+  }
+  /* --- Sección Agenda (pantalla completa de la pestaña) --- */
+  if (subView === "agenda") {
+    return <AgendaManager onBack={() => setSubView(null)} />;
+  }
+  /* --- Sección Transmisión OBS (pantalla completa de la pestaña) --- */
+  if (subView === "obs") {
+    return <ObsStreamManager onBack={() => setSubView(null)} />;
+  }
 
   const save = async (data: TournamentInput) => {
     setBusy(true);
@@ -357,6 +386,30 @@ export function TournamentsView({
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Btn
+            variant="dark"
+            onClick={() => setSubView("videos")}
+            title="Videos de la pantalla de espera del visor — subir, listar, resincronizar y elegir cuáles se reproducen"
+          >
+            <Film size={14} />
+            Videos
+          </Btn>
+          <Btn
+            variant="dark"
+            onClick={() => setSubView("agenda")}
+            title="Agenda de eventos con horario — se desfila en la barra inferior de la pantalla de espera"
+          >
+            <CalendarDays size={14} />
+            Agenda
+          </Btn>
+          <Btn
+            variant="dark"
+            onClick={() => setSubView("obs")}
+            title="Transmisión OBS — URLs para que OBS transmita a la app y tamaño en píxeles del visor"
+          >
+            <Cast size={14} />
+            Transmisión OBS
+          </Btn>
           <Btn
             variant="dark"
             onClick={() => setSoundsOpen(true)}

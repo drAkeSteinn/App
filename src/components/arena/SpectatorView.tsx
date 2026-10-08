@@ -7,7 +7,6 @@ import {
   Expand,
   LayoutPanelLeft,
   Loader2,
-  Radio,
   Timer,
   Trophy,
   UserPlus,
@@ -35,6 +34,8 @@ import { RegistrationBroadcast } from "./RegistrationBroadcast";
 import { BankView } from "./BankView";
 import { MatchSpotlight } from "./MatchSpotlight";
 import { SubEnterOverlay } from "./SubEnterOverlay";
+import { ObsStreamStage } from "./ObsStreamPlayer";
+import { WaitingScreen } from "./WaitingScreen";
 
 /* ============================================================
    VISOR DE ESPECTADORES — transmisión del torneo
@@ -303,6 +304,8 @@ export function SpectatorView({ tid }: { tid: string | null }) {
   /* cartelera de horarios: la controla el admin desde "Torneo en vivo".
      El visor solo refleja el estado (pantalla proyectada, sin interacción). */
   const schedOpen = arenaState?.schedOpen ?? false;
+  /* la transmisión del OBS solo se muestra si el admin la activó (fase 5) */
+  const transmissionVisible = arenaState?.transmissionVisible ?? false;
   /* reproductor de sonidos (carga la config global + reproduce) */
   const playSound = useSoundPlayer();
 
@@ -526,45 +529,12 @@ export function SpectatorView({ tid }: { tid: string | null }) {
     return items;
   }, [bracket, tournament, schedule, players]);
 
-  /* ----- pantalla de espera: no hay torneo activo para transmitir ----- */
+  /* ----- pantalla de espera: no hay torneo activo para transmitir.
+     COMPONENTE PROPIO: reproduce la playlist de videos marcados en
+     Configuración → Videos (en loop) y desfila la AGENDA DEL DÍA en
+     la barra inferior. Sin videos marcados cae a la pantalla clásica. ----- */
   if (!effectiveTid || (!loading && !tournament)) {
-    return (
-      <div className="fixed inset-0 overflow-hidden flex items-center justify-center" style={{ background: "#070708" }}>
-        <Backdrop variant="show" />
-        <ShowBackground dim={0.14} />
-        <div className="relative z-10 max-w-xl mx-auto px-6 text-center">
-          {loading ? (
-            <div className="flex justify-center py-16 text-[#8e919c]">
-              <Loader2 size={26} className="animate-spin" />
-            </div>
-          ) : error ? (
-            <div className="panel clip-card p-4 text-[12px] font-bold text-[#ff8095]">Error de Firebase: {error}</div>
-          ) : (
-            <>
-              <div className="flex justify-center mb-6">
-                <div className="w-16 h-16 clip-card border border-white/15 bg-black/40 flex items-center justify-center">
-                  <Radio size={28} className="text-[#e8102e]" />
-                </div>
-              </div>
-              <span className="text-[11px] font-extrabold tracking-[0.5em] uppercase text-[#ff8095]">Visor de espectadores</span>
-              <h1 className="font-display italic text-[34px] sm:text-[44px] uppercase leading-none mt-3">
-                <span className="text-silver-grad">Esperando</span> <span className="text-red-grad">transmisión</span>
-              </h1>
-              <p className="text-[12px] font-bold tracking-[0.16em] uppercase text-[#8e919c] mt-6 leading-relaxed">
-                No hay un torneo abierto para transmitir.
-                <br />
-                El administrador debe abrir un torneo desde
-                <br />
-                <span className="text-white">Torneo en vivo → Abrir torneo</span>.
-              </p>
-              <p className="text-[9px] font-bold tracking-[0.3em] uppercase text-[#6b6e78] mt-8">
-                Esta pantalla se actualiza sola cuando se abra un torneo
-              </p>
-            </>
-          )}
-        </div>
-      </div>
-    );
+    return <WaitingScreen loading={loading} error={error} />;
   }
 
   if (!tournament) {
@@ -619,12 +589,17 @@ export function SpectatorView({ tid }: { tid: string | null }) {
         <AnimatePresence mode="wait">
           {/* MODO REGISTRO */}
           {mode === "reg" ? (
-            <RegistrationBroadcast
-              key="reg"
-              t={tournament}
-              players={players}
-              onCountdownClick={() => changeMode("brackets")}
-            />
+            <div key="reg" className="absolute inset-0 flex flex-col">
+              {/* Transmisión OBS: solo cuando el admin activó "Mostrar transmicion" */}
+              <ObsStreamStage visible={transmissionVisible} />
+              <div className="flex-1 min-h-0 relative">
+                <RegistrationBroadcast
+                  t={tournament}
+                  players={players}
+                  onCountdownClick={() => changeMode("brackets")}
+                />
+              </div>
+            </div>
           ) : mode === "bank" ? (
             /* MODO BANCO — el admin abrió el selector de reservas: el visor
                muestra las disponibles para que el caster llame a los jugadores */
@@ -648,25 +623,31 @@ export function SpectatorView({ tid }: { tid: string | null }) {
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.5 }}
-                  className={`absolute inset-0 ${mixing && !mixDone ? "opacity-30" : ""} transition-opacity duration-500`}
+                  className={`absolute inset-0 flex flex-col ${mixing && !mixDone ? "opacity-30" : ""} transition-opacity duration-500`}
                 >
-                  {bracket ? (
-                    <FitStage deps={[bracket, tournament.modality, status]} maxScale={1.05} minScale={0.3} className="w-full h-full">
-                      <BracketTree
-                        bracket={bracket}
-                        modality={tournament.modality}
-                        mode="viewer"
-                        schedule={schedule}
-                        showTimes={status === "live"}
-                        revealCount={mixing ? revealCount : undefined}
-                        pool={pool}
-                      />
-                    </FitStage>
-                  ) : (
-                    <div className="h-full flex items-center justify-center text-[#8e919c]">
-                      <Loader2 size={24} className="animate-spin" />
-                    </div>
-                  )}
+                  {/* Transmisión OBS: video centrado encima de los brackets con el
+                      tamaño en píxeles configurado. SOLO cuando el admin activó
+                      "Mostrar transmicion" y hay señal (si no, brackets normales). */}
+                  <ObsStreamStage visible={transmissionVisible} />
+                  <div className="flex-1 min-h-0">
+                    {bracket ? (
+                      <FitStage deps={[bracket, tournament.modality, status]} maxScale={1.05} minScale={0.3} className="w-full h-full">
+                        <BracketTree
+                          bracket={bracket}
+                          modality={tournament.modality}
+                          mode="viewer"
+                          schedule={schedule}
+                          showTimes={status === "live"}
+                          revealCount={mixing ? revealCount : undefined}
+                          pool={pool}
+                        />
+                      </FitStage>
+                    ) : (
+                      <div className="h-full flex items-center justify-center text-[#8e919c]">
+                        <Loader2 size={24} className="animate-spin" />
+                      </div>
+                    )}
+                  </div>
                 </motion.div>
               ) : null}
             </>
