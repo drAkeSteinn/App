@@ -19,9 +19,11 @@ import { Backdrop } from "./ui";
    · PLAYLIST DE VIDEOS: reproduce en LOOP los videos marcados
      en la sección "Videos" de Configuración (carpeta videos/
      del servidor). Uno tras otro, y al terminar el último
-     vuelve al primero. Mute por defecto (autoplay permitido)
-     con botón para activar el sonido.
-   · AGENDA DEL DÍA: barra inferior con fondo negro semi
+     vuelve al primero. CON AUDIO por defecto: si el navegador
+     bloquea el autoplay con sonido (sin interacción del
+     usuario), se silencia solo y sigue reproduciendo — el
+     primer clic/toque en la pantalla reactiva el audio.
+   · AGENDA DEL DÍA: barra SUPERIOR con fondo negro semi
      transparente donde desfilan (derecha → izquierda) las
      cards de los eventos de HOY, al estilo de las cards de
      los brackets.
@@ -46,15 +48,23 @@ function WaitingVideoStage({
   playlist,
   muted,
   onToggleMute,
+  agendaTop,
 }: {
   playlist: VideoMeta[];
   muted: boolean;
   onToggleMute: () => void;
+  /* true cuando la barra de agenda está fijada ARRIBA: los chips
+     de identidad bajan para no quedar tapados por la barra */
+  agendaTop: boolean;
 }) {
   const [idx, setIdx] = useState(0);
   const [allFailed, setAllFailed] = useState(false);
   const failedRef = useRef<Set<string>>(new Set());
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  /* autoplay con sonido bloqueado por el navegador → el primer
+     gesto del usuario (clic/toque/tecla) fuera de un botón
+     reactiva el audio automáticamente */
+  const blockedRef = useRef(false);
 
   const safeIdx = playlist.length ? idx % playlist.length : 0;
   const current = playlist[safeIdx];
@@ -85,11 +95,66 @@ function WaitingVideoStage({
   /* un solo video → loop nativo (onEnded no cambiaría el índice) */
   const single = playlist.length === 1;
 
+  /* AUDIO POR DEFECTO: el video arranca CON SONIDO. Si el navegador
+     bloquea la reproducción con audio (política de autoplay sin
+     interacción), se silencia y continúa en loop — y el primer gesto
+     del usuario en la pantalla lo reactiva (ver efecto de abajo).
+     Se reintenta en cada cambio de video (la key del <video> remonta
+     el elemento y el autoplay declarativo puede volver a bloquearse). */
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (muted) {
+      if (v.paused) v.play().catch(() => {});
+      return;
+    }
+    v.muted = false;
+    const p = v.play();
+    if (p) {
+      p.then(
+        () => {},
+        () => {
+          if (blockedRef.current) return;
+          blockedRef.current = true;
+          onToggleMute(); // el padre pasa a silenciado (sigue el loop)
+          v.muted = true;
+          v.play().catch(() => {});
+        }
+      );
+    }
+  }, [muted, current?.name, onToggleMute]);
+
+  /* silenciado POR BLOQUEO (no por elección del usuario): el primer
+     clic/toque/tecla en la pantalla restaura el audio. Los clics en
+     botones se ignoran — el botón de sonido maneja su propio toggle. */
+  useEffect(() => {
+    if (!blockedRef.current) return;
+    const unlock = (e: Event) => {
+      if (!blockedRef.current) return;
+      const t = e.target instanceof HTMLElement ? e.target : null;
+      if (t && t.closest("button")) return;
+      blockedRef.current = false;
+      const v = videoRef.current;
+      if (v) {
+        v.muted = false;
+        v.play().catch(() => {});
+      }
+      onToggleMute();
+    };
+    window.addEventListener("pointerdown", unlock);
+    window.addEventListener("keydown", unlock);
+    return () => {
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+  }, [muted, onToggleMute]);
+
   /* Activar/silenciar el sonido de forma IMPERATIVA: se aplica el mute
      SINCRÓNICAMENTE en el elemento (no se espera el re-render) y luego se
      asegura play(). Si el navegador bloquea el audio (sin activación de
      usuario) se regresa a silencio y la reproducción continúa en loop. */
   const handleMuteToggle = useCallback(() => {
+    blockedRef.current = false; // el usuario toma control manual
     const v = videoRef.current;
     const willBeMuted = muted; // muted=true → pasará a sonar; false → pasará a silencio
     onToggleMute();
@@ -128,13 +193,14 @@ function WaitingVideoStage({
         onError={handleError}
         aria-label="Video de espera"
       />
-      {/* velo superior sutil para legibilidad del chip */}
+      {/* velo sutil bajo la barra de agenda (legibilidad de los chips):
+          si no hay agenda, oscurece desde el borde superior */}
       <div
-        className="absolute top-0 inset-x-0 h-20 bg-[linear-gradient(180deg,rgba(7,7,8,0.9),transparent)] pointer-events-none"
+        className={`absolute inset-x-0 h-20 bg-[linear-gradient(180deg,rgba(7,7,8,0.9),transparent)] pointer-events-none ${agendaTop ? "top-[62px]" : "top-0"}`}
         aria-hidden
       />
-      {/* identidad + progreso de la playlist */}
-      <div className="absolute top-4 left-4 z-10 flex items-center gap-2">
+      {/* identidad + progreso de la playlist (bajo la agenda si está arriba) */}
+      <div className={`absolute left-4 z-10 flex items-center gap-2 ${agendaTop ? "top-[74px]" : "top-4"}`}>
         <span className="chip clip-tag bg-black/75 border border-white/12 text-[#ff8095] text-[9px] font-extrabold uppercase tracking-[0.2em] px-3 py-1.5">
           <Radio size={11} className="text-[#e8102e]" />
           Esperando transmisión
@@ -145,13 +211,13 @@ function WaitingVideoStage({
           </span>
         ) : null}
       </div>
-      {/* sonido */}
+      {/* sonido (abajo a la derecha — la agenda ya vive arriba) */}
       <button
         type="button"
         onClick={handleMuteToggle}
         title={muted ? "Activar sonido del video" : "Silenciar video"}
         aria-label={muted ? "Activar sonido del video" : "Silenciar video"}
-        className="btn-press absolute right-4 bottom-[74px] z-10 p-2.5 border border-white/15 bg-black/70 text-[#c9cbd3] hover:text-white hover:border-[#e8102e]/60"
+        className="btn-press absolute right-4 bottom-4 z-10 p-2.5 border border-white/15 bg-black/70 text-[#c9cbd3] hover:text-white hover:border-[#e8102e]/60"
       >
         {muted ? <VolumeX size={15} /> : <Volume2 size={15} className="text-[#ffb830]" />}
       </button>
@@ -183,7 +249,7 @@ function AgendaTickerCard({ ev }: { ev: AgendaEvent }) {
   );
 }
 
-/* ---------------- barra inferior: agenda de HOY desfilando ----------------
+/* ---------------- barra SUPERIOR: agenda de HOY desfilando ----------------
    CARRUSEL COMPLETO E INFINITO: la cinta es [unidad, unidad], donde una
    unidad = TODAS las actividades del día repetidas las veces necesarias
    para cubrir el ancho de la barra (se MIDE, no se estima). La animación
@@ -230,7 +296,7 @@ function AgendaTickerBar({ events }: { events: AgendaEvent[] }) {
   }, [unit, reps]);
 
   return (
-    <footer className="absolute bottom-0 inset-x-0 z-20 h-[62px] border-t border-white/10 bg-black/70 backdrop-blur-sm flex items-stretch overflow-hidden">
+    <header className="absolute top-0 inset-x-0 z-20 h-[62px] border-b border-white/10 bg-black/70 backdrop-blur-sm flex items-stretch overflow-hidden">
       {/* etiqueta lateral fija */}
       <div className="shrink-0 w-[46px] red-badge flex flex-col items-center justify-center gap-1 z-10">
         <CalendarClock size={13} />
@@ -256,7 +322,7 @@ function AgendaTickerBar({ events }: { events: AgendaEvent[] }) {
           ))}
         </div>
       </div>
-    </footer>
+    </header>
   );
 }
 
@@ -269,8 +335,10 @@ export function WaitingScreen({ loading, error }: { loading: boolean; error: str
   const { data: agenda } = useAgenda();
   const minute = useMinuteTick();
   const dayKey = useMemo(() => localDateKey(new Date(minute * 60_000)), [minute]);
-  /* el sonido sobrevive a los cambios de playlist (vive en el padre) */
-  const [muted, setMuted] = useState(true);
+  /* el sonido sobrevive a los cambios de playlist (vive en el padre).
+     AUDIO POR DEFECTO: si el navegador bloquea el autoplay con sonido,
+     la etapa lo silencia sola y lo reactiva al primer gesto (ver arriba). */
+  const [muted, setMuted] = useState(false);
   const toggleMute = useCallback(() => setMuted((m) => !m), []);
 
   /* solo los eventos del día en curso (la agenda ya viene ordenada) */
@@ -284,7 +352,13 @@ export function WaitingScreen({ loading, error }: { loading: boolean; error: str
     <div className="fixed inset-0 overflow-hidden" style={{ background: "#070708" }}>
       {showVideos ? (
         /* ===== videos en loop ===== */
-        <WaitingVideoStage key={playlistKey} playlist={playlist} muted={muted} onToggleMute={toggleMute} />
+        <WaitingVideoStage
+          key={playlistKey}
+          playlist={playlist}
+          muted={muted}
+          onToggleMute={toggleMute}
+          agendaTop={todayEvents.length > 0}
+        />
       ) : (
         /* ===== pantalla estática clásica ===== */
         <>
@@ -327,7 +401,7 @@ export function WaitingScreen({ loading, error }: { loading: boolean; error: str
         </>
       )}
 
-      {/* ===== agenda del día desfilando (fondo negro semi transparente) ===== */}
+      {/* ===== agenda del día desfilando ARRIBA (fondo negro semi transparente) ===== */}
       {todayEvents.length > 0 ? <AgendaTickerBar events={todayEvents} /> : null}
     </div>
   );

@@ -28,12 +28,16 @@ import { Podium } from "./Podium";
        - Podio de campeones (Podium) — cuando el admin activa
          "Mostrar podio" y hay campeón real (mismo guard anti-
          residual que el visor).
+   · Cada animación arrastra su OSCURECIMIENTO igual que en el
+     visor (/?v=show): el velo semi transparente que atenúa lo
+     que hay detrás — la señal del juego en OBS — para que el
+     corte drama resalte. Sin animación activa → 100%
+     transparente (no dibuja nada, ideal para dejar la fuente
+     fija en OBS).
    · La detección usa el MISMO hook (useDramaCuts) que el visor
      (/?v=show), así que siempre están sincronizadas.
    · Es MUDO a propósito: el sonido lo pone el visor; así no se
      duplica el audio de la transmisión.
-   · Sin animación activa → pantalla 100% transparente (no dibuja
-     nada, ideal para dejar la fuente fija en OBS).
    ============================================================ */
 
 export function AnimOverlay({ tid }: { tid: string | null }) {
@@ -88,28 +92,28 @@ export function AnimOverlay({ tid }: { tid: string | null }) {
       role="img"
       aria-label="Overlay de animaciones para OBS — cortes de VS, ganador y podio"
     >
-      {/* corte VS / GANADOR (fondo con velo suave, transparente para OBS) */}
+      {/* corte VS / GANADOR — SIN modo transparent: arrastra el mismo
+          oscurecimiento semi opaco del visor (velo radial oscuro) para
+          atenuar la señal del juego que hay detrás en OBS */}
       <AnimatePresence>
         {spotlight ? (
-          <MatchSpotlight key={spotlight.id} data={spotlight} transparent onDone={dismissSpotlight} />
+          <MatchSpotlight key={spotlight.id} data={spotlight} onDone={dismissSpotlight} />
         ) : null}
       </AnimatePresence>
 
-      {/* reserva entrando al match */}
+      {/* reserva entrando al match — mismo velo del visor */}
       <AnimatePresence>
-        {subEnter ? (
-          <SubEnterOverlay key={subEnter.id} data={subEnter} transparent onDone={dismissSubEnter} />
-        ) : null}
+        {subEnter ? <SubEnterOverlay key={subEnter.id} data={subEnter} onDone={dismissSubEnter} /> : null}
       </AnimatePresence>
 
-      {/* podio de campeones (sin botones: lo controla el admin desde la Fase 5) */}
+      {/* podio de campeones (sin botones: lo controla el admin desde la Fase 5) —
+          mismo fondo del visor */}
       <AnimatePresence>
         {bracket && showPodium && tournament ? (
           <Podium
             key="podium"
             bracket={bracket}
             tournament={tournament}
-            transparent
             hideControls
             onClose={() => {}}
           />

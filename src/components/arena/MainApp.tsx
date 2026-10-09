@@ -115,17 +115,22 @@ export function MainApp() {
     <div className="min-h-screen flex flex-col relative">
       <Backdrop variant="app" />
 
-      {/* ================= HEADER =================
-          Lenguaje visual unificado: dos "docks" segmentados (navegación y
-          salidas) con la MISMA altura/tipografía/corte en todos los controles,
-          y el selector de torneo junto a las salidas de transmisión. */}
+      {/* ================= HEADER (dos filas) =================
+          Fila 1 · utilidades: marca + torneo activo + salidas de
+          transmisión (Transmisión OBS · Animaciones OBS · Cards OBS ·
+          Visor) con labels visibles desde lg.
+          Fila 2 · navegación: las secciones (Configuración · Registro
+          · Torneo en vivo · Concursos) repartidas a lo ancho — cada
+          tab con su label SIEMPRE visible y buen objetivo táctil,
+          sin apiñamiento horizontal. */}
       <header className="sticky top-0 z-40 border-b border-white/10 bg-[#070708]/85 backdrop-blur-md">
-        <div className="mx-auto max-w-[1500px] px-4 sm:px-6 h-[64px] flex items-center gap-2.5 sm:gap-4 overflow-x-auto no-scrollbar">
-          {/* brand (el texto se oculta < xl para dar espacio a la navegación) */}
+        {/* ----- fila 1: identidad + torneo + salidas ----- */}
+        <div className="mx-auto max-w-[1500px] px-4 sm:px-6 h-[58px] flex items-center gap-3 overflow-x-auto no-scrollbar">
+          {/* brand */}
           <div className="flex items-center gap-2.5 shrink-0">
-            <Emblem size={34} />
-            <div className="leading-none hidden xl:block">
-              <div className="font-display italic text-[17px] uppercase">
+            <Emblem size={30} />
+            <div className="leading-none hidden md:block">
+              <div className="font-display italic text-[16px] uppercase">
                 <span className="text-white">Arena</span> <span className="text-red-grad">Torneos</span>
               </div>
               <div className="text-[8px] font-extrabold tracking-[0.32em] uppercase text-[#6b6e78] mt-1">
@@ -134,28 +139,8 @@ export function MainApp() {
             </div>
           </div>
 
-          {/* dock de navegación */}
-          <nav className="hdr-dock shrink-0" aria-label="Secciones">
-            {TABS.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setTab(t.id)}
-                aria-current={tab === t.id ? "page" : undefined}
-                className={`hdr-ctl clip-tag tab-btn px-2.5 xl:px-3 ${
-                  tab === t.id
-                    ? "active"
-                    : "text-[#8e919c] hover:text-white bg-white/[0.03] hover:bg-white/[0.07]"
-                }`}
-              >
-                {t.icon}
-                {t.label}
-              </button>
-            ))}
-          </nav>
-
           {/* cluster derecho: torneo activo + salidas de transmisión */}
-          <div className="ml-auto flex items-center gap-2.5 sm:gap-3">
+          <div className="ml-auto flex items-center gap-2.5 shrink-0">
             <Select
               className="w-[150px] xl:w-[190px] min-w-[120px]"
               placeholder="TORNEO…"
@@ -180,17 +165,17 @@ export function MainApp() {
               >
                 <Cast size={13} />
                 <ObsStreamDot pollMs={12000} />
-                <span className="hidden min-[1500px]:inline">Transmisión OBS</span>
+                <span className="hidden lg:inline">Transmisión OBS</span>
               </button>
               <button
                 type="button"
                 onClick={openObsAnims}
-                title="Abrir solo las animaciones para OBS (nueva ventana) — VS, ganador, reserva y podio con fondo transparente. URL general para todos los torneos y concursos"
+                title="Abrir solo las animaciones para OBS (nueva ventana) — VS, ganador, reserva y podio con el mismo oscurecimiento del visor. URL general para todos los torneos y concursos"
                 aria-label="Abrir animaciones de OBS en nueva ventana"
                 className="hdr-ctl clip-tag obs-anim-btn px-3"
               >
                 <Clapperboard size={13} className="text-[#ffd25e]/85" />
-                <span className="hidden min-[1500px]:inline">Animaciones OBS</span>
+                <span className="hidden lg:inline">Animaciones OBS</span>
               </button>
               <button
                 type="button"
@@ -200,7 +185,7 @@ export function MainApp() {
                 className="hdr-ctl clip-tag obs-btn px-3"
               >
                 <MonitorPlay size={13} className="text-[#ffb3be]/85" />
-                <span className="hidden min-[1500px]:inline">Cards OBS</span>
+                <span className="hidden lg:inline">Cards OBS</span>
               </button>
               <button
                 type="button"
@@ -211,10 +196,32 @@ export function MainApp() {
               >
                 <Eye size={13} />
                 <span className="hidden sm:inline">Visor</span>
-                <ExternalLink size={10} className="opacity-60 hidden min-[1500px]:inline" />
+                <ExternalLink size={10} className="opacity-60 hidden lg:inline" />
               </button>
             </div>
           </div>
+        </div>
+
+        {/* ----- fila 2: navegación de secciones (labels siempre visibles) ----- */}
+        <div className="mx-auto max-w-[1500px] px-4 sm:px-6">
+          <nav className="hdr-dock w-full overflow-x-auto no-scrollbar" aria-label="Secciones">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setTab(t.id)}
+                aria-current={tab === t.id ? "page" : undefined}
+                className={`hdr-ctl clip-tag tab-btn flex-1 px-3 ${
+                  tab === t.id
+                    ? "active"
+                    : "text-[#8e919c] hover:text-white bg-white/[0.03] hover:bg-white/[0.07]"
+                }`}
+              >
+                {t.icon}
+                {t.label}
+              </button>
+            ))}
+          </nav>
         </div>
 
         {/* barra roja inferior decorativa */}
